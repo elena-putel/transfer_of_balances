@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: transfer_balances
+      POSTGRES_USER: transfer_user
+      POSTGRES_PASSWORD: transfer_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  transfer-of-balances:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: transfer_balances
+      DB_USER: transfer_user
+      DB_PASSWORD: transfer_pass
+      TRANSFER_INPUT_DIR: /data/incoming
+      TRANSFER_PROCESSED_DIR: /data/processed
+      TRANSFER_ERROR_DIR: /data/error
+    volumes:
+      - ./data/incoming:/data/incoming
+      - ./data/processed:/data/processed
+      - ./data/error:/data/error
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:
