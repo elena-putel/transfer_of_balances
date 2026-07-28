@@ -65,9 +65,9 @@ public class LoadProtocolExcelService {
             rowIdx++;
             writeNotLoadedSection(sheet, rowIdx, data, styles);
 
-            sheet.setColumnWidth(0, 50 * 256);
-            sheet.setColumnWidth(1, 60 * 256);
-            sheet.setColumnWidth(2, 18 * 256);
+            sheet.setColumnWidth(0, 42 * 256);
+            sheet.setColumnWidth(1, 28 * 256);
+            sheet.setColumnWidth(2, 16 * 256);
 
             workbook.write(out);
             log.info("Протокол загрузки сохранён: {}", target);
@@ -109,15 +109,16 @@ public class LoadProtocolExcelService {
 
     private int writeFailureBanner(Sheet sheet, int rowIdx, LoadProtocolData data, Styles styles) {
         Row row = sheet.createRow(rowIdx);
-        row.setHeightInPoints(30);
+        String text = "ОШИБКА ЗАГРУЗКИ: " + data.getFailureReason();
         Cell cell = row.createCell(0);
-        cell.setCellValue("ОШИБКА ЗАГРУЗКИ: " + data.getFailureReason());
+        cell.setCellValue(text);
         cell.setCellStyle(styles.failure);
         CellRangeAddress merged = new CellRangeAddress(rowIdx, rowIdx, 0, 2);
         sheet.addMergedRegion(merged);
         applyRegionBorder(merged, sheet);
         row.createCell(1).setCellStyle(styles.failure);
         row.createCell(2).setCellStyle(styles.failure);
+        adjustRowHeight(row, text, 80);
         return rowIdx + 1;
     }
 
@@ -152,7 +153,7 @@ public class LoadProtocolExcelService {
             createCell(row, 0, statusName, styles.tableCell);
             createNumericCell(row, 1, item.getCount(), styles.tableCellNumber);
             createCell(row, 2, formatSum(item.getSum()), styles.tableCellNumber);
-            adjustRowHeight(row, statusName, 48);
+            adjustRowHeight(row, statusName, 40);
         }
         if (data.getStatusBreakdown().isEmpty()) {
             Row row = sheet.createRow(rowIdx++);
@@ -186,7 +187,7 @@ public class LoadProtocolExcelService {
             sheet.addMergedRegion(commentRange);
             createCell(row, 1, comment, styles.tableCell);
             createCell(row, 2, "", styles.tableCell);
-            adjustRowHeight(row, comment, 75);
+            adjustRowHeight(row, comment, 42);
         }
         if (data.getNotLoadedRows().isEmpty()) {
             Row row = sheet.createRow(rowIdx++);
@@ -199,18 +200,42 @@ public class LoadProtocolExcelService {
     }
 
     /**
-     * Увеличивает высоту строки под перенос длинного текста.
+     * Перенос текста внутри ячейки + увеличение высоты строки (ширина колонок не меняется).
      */
-    private static void adjustRowHeight(Row row, String text, int approxCharsPerLine) {
-        if (text == null || text.isBlank()) {
+    private static void adjustRowHeight(Row row, String text, int charsPerLine) {
+        if (text == null || text.isBlank() || charsPerLine <= 0) {
             return;
         }
-        int lines = Math.max(1, (int) Math.ceil((double) text.length() / approxCharsPerLine));
-        // на случай пробелов/слов — минимум 2 строки для длинных статусов
-        if (text.length() > approxCharsPerLine) {
-            lines = Math.max(lines, 2);
+        int lines = countWrappedLines(text, charsPerLine);
+        row.setHeightInPoints(Math.max(18f, lines * 16f));
+    }
+
+    private static int countWrappedLines(String text, int charsPerLine) {
+        int lines = 1;
+        int lineLen = 0;
+        for (String word : text.split("\\s+")) {
+            if (word.isEmpty()) {
+                continue;
+            }
+            if (word.length() > charsPerLine) {
+                if (lineLen > 0) {
+                    lines++;
+                    lineLen = 0;
+                }
+                lines += (word.length() - 1) / charsPerLine;
+                lineLen = word.length() % charsPerLine;
+                continue;
+            }
+            if (lineLen == 0) {
+                lineLen = word.length();
+            } else if (lineLen + 1 + word.length() <= charsPerLine) {
+                lineLen += 1 + word.length();
+            } else {
+                lines++;
+                lineLen = word.length();
+            }
         }
-        row.setHeightInPoints(Math.max(15f, lines * 15f));
+        return Math.max(1, lines);
     }
 
     private static int sectionTitle(Sheet sheet, int rowIdx, String title, Styles styles) {
@@ -236,7 +261,7 @@ public class LoadProtocolExcelService {
         createCell(row, 2, "", styles.value);
         applyRegionBorder(new CellRangeAddress(rowIdx, rowIdx, 0, 0), sheet);
         applyRegionBorder(valueRange, sheet);
-        adjustRowHeight(row, text, 70);
+        adjustRowHeight(row, text, 42);
         return rowIdx + 1;
     }
 
@@ -357,7 +382,7 @@ public class LoadProtocolExcelService {
 
             CellStyle value = workbook.createCellStyle();
             value.setFont(normalFont);
-            value.setVerticalAlignment(VerticalAlignment.CENTER);
+            value.setVerticalAlignment(VerticalAlignment.TOP);
             value.setWrapText(true);
             setThinBorder(value);
 
@@ -384,7 +409,7 @@ public class LoadProtocolExcelService {
 
             CellStyle tableCell = workbook.createCellStyle();
             tableCell.setFont(normalFont);
-            tableCell.setVerticalAlignment(VerticalAlignment.CENTER);
+            tableCell.setVerticalAlignment(VerticalAlignment.TOP);
             tableCell.setWrapText(true);
             setThinBorder(tableCell);
 
