@@ -294,7 +294,7 @@ public class LoadProtocolExcelService {
 
     private static String formatSum(BigDecimal sum) {
         BigDecimal value = sum == null ? BigDecimal.ZERO : sum;
-        return value.setScale(4, RoundingMode.HALF_UP).toPlainString();
+        return value.setScale(4, RoundingMode.HALF_UP).toPlainString().replace('.', ',');
     }
 
     private static String formatDuration(LoadProtocolData data) {
