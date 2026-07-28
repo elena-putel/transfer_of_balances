@@ -198,7 +198,8 @@ public class TransferProcessingService {
                     records,
                     saved,
                     startedAt,
-                    finishedAt == null ? LocalDateTime.now() : finishedAt);
+                    finishedAt == null ? LocalDateTime.now() : finishedAt,
+                    resolveDirectoryPath(properties.getProcessedDirectory()));
             protocolExcelService.write(protocolData);
             errorExcelService.write(protocolData);
         } catch (Exception ex) {
@@ -217,12 +218,17 @@ public class TransferProcessingService {
                     records,
                     startedAt,
                     finishedAt == null ? LocalDateTime.now() : finishedAt,
-                    failureReason);
+                    failureReason,
+                    resolveDirectoryPath(properties.getErrorDirectory()));
             protocolExcelService.write(protocolData);
             errorExcelService.write(protocolData);
         } catch (Exception ex) {
             log.warn("Не удалось сформировать протокол ошибки для {}: {}", fileName, ex.getMessage());
         }
+    }
+
+    private static String resolveDirectoryPath(String directory) {
+        return Path.of(directory).toAbsolutePath().normalize().toString();
     }
 
     private TransferLoadLog createLoadLog(String fileName, Path reportFile) {

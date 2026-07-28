@@ -32,8 +32,9 @@ public class LoadProtocolAssembler {
                                      List<TransferRecordDto> sourceRecords,
                                      List<TransferBalance> savedEntities,
                                      LocalDateTime startedAt,
-                                     LocalDateTime finishedAt) {
-        return assembleInternal(fileName, sourceRecords, savedEntities, startedAt, finishedAt, null);
+                                     LocalDateTime finishedAt,
+                                     String filesMovedToPath) {
+        return assembleInternal(fileName, sourceRecords, savedEntities, startedAt, finishedAt, null, filesMovedToPath);
     }
 
     /**
@@ -43,7 +44,8 @@ public class LoadProtocolAssembler {
                                            List<TransferRecordDto> sourceRecords,
                                            LocalDateTime startedAt,
                                            LocalDateTime finishedAt,
-                                           String failureReason) {
+                                           String failureReason,
+                                           String filesMovedToPath) {
         List<TransferRecordDto> records = sourceRecords == null ? List.of() : sourceRecords;
         List<LoadProtocolData.NotLoadedRow> notLoadedRows = new ArrayList<>(records.size());
         BigDecimal notLoadedSum = BigDecimal.ZERO;
@@ -62,7 +64,7 @@ public class LoadProtocolAssembler {
 
         InputStats input = calcInputStats(records);
 
-        return baseBuilder(fileName, startedAt, finishedAt)
+        return baseBuilder(fileName, startedAt, finishedAt, filesMovedToPath)
                 .failureReason(failureReason)
                 .inputTotalCount(input.totalCount)
                 .inputTotalSum(input.totalSum)
@@ -84,7 +86,8 @@ public class LoadProtocolAssembler {
                                               List<TransferBalance> savedEntities,
                                               LocalDateTime startedAt,
                                               LocalDateTime finishedAt,
-                                              String failureReason) {
+                                              String failureReason,
+                                              String filesMovedToPath) {
         InputStats input = calcInputStats(sourceRecords);
 
         Map<Integer, StatusAccumulator> byStatus = new LinkedHashMap<>();
@@ -124,7 +127,7 @@ public class LoadProtocolAssembler {
                         .build())
                 .toList();
 
-        return baseBuilder(fileName, startedAt, finishedAt)
+        return baseBuilder(fileName, startedAt, finishedAt, filesMovedToPath)
                 .failureReason(failureReason)
                 .inputTotalCount(sourceRecords.size())
                 .inputTotalSum(input.totalSum)
@@ -143,14 +146,16 @@ public class LoadProtocolAssembler {
 
     private LoadProtocolData.LoadProtocolDataBuilder baseBuilder(String fileName,
                                                                    LocalDateTime startedAt,
-                                                                   LocalDateTime finishedAt) {
+                                                                   LocalDateTime finishedAt,
+                                                                   String filesMovedToPath) {
         return LoadProtocolData.builder()
                 .softwareVersion(transferProperties.getSoftwareVersion())
                 .startedAt(startedAt)
                 .finishedAt(finishedAt)
                 .userName(informixProperties.getUsername() == null ? "" : informixProperties.getUsername())
                 .serverName(extractInformixServer(informixProperties.getUrl()))
-                .fileName(fileName);
+                .fileName(fileName)
+                .filesMovedToPath(filesMovedToPath == null ? "" : filesMovedToPath);
     }
 
     private static InputStats calcInputStats(List<TransferRecordDto> sourceRecords) {

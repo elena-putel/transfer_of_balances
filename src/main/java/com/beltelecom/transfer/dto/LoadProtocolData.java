@@ -19,6 +19,9 @@ public class LoadProtocolData {
     String serverName;
     String fileName;
 
+    /** Каталог, куда перенесены исходные файлы после обработки. */
+    String filesMovedToPath;
+
     /** Причина Fail Fast / ошибки загрузки (null — успешная загрузка). */
     String failureReason;
 

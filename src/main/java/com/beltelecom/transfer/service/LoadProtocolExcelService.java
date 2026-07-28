@@ -102,6 +102,7 @@ public class LoadProtocolExcelService {
         rowIdx = labelValue(sheet, rowIdx, "Продолжительность загрузки:", formatDuration(data), styles);
         rowIdx = labelValue(sheet, rowIdx, "Пользователь:", data.getUserName(), styles);
         rowIdx = labelValue(sheet, rowIdx, "Сервер:", data.getServerName(), styles);
+        rowIdx = labelValue(sheet, rowIdx, "Файлы перенесены в:", data.getFilesMovedToPath(), styles);
         return rowIdx;
     }
 
