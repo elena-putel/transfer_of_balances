@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -64,8 +65,8 @@ public class LoadProtocolExcelService {
             rowIdx++;
             writeNotLoadedSection(sheet, rowIdx, data, styles);
 
-            sheet.setColumnWidth(0, 55 * 256);
-            sheet.setColumnWidth(1, 22 * 256);
+            sheet.setColumnWidth(0, 50 * 256);
+            sheet.setColumnWidth(1, 60 * 256);
             sheet.setColumnWidth(2, 18 * 256);
 
             workbook.write(out);
@@ -147,9 +148,11 @@ public class LoadProtocolExcelService {
 
         for (LoadProtocolData.StatusBreakdown item : data.getStatusBreakdown()) {
             Row row = sheet.createRow(rowIdx++);
-            createCell(row, 0, item.getStatusName(), styles.tableCell);
+            String statusName = item.getStatusName() == null ? "" : item.getStatusName();
+            createCell(row, 0, statusName, styles.tableCell);
             createNumericCell(row, 1, item.getCount(), styles.tableCellNumber);
             createCell(row, 2, formatSum(item.getSum()), styles.tableCellNumber);
+            adjustRowHeight(row, statusName, 48);
         }
         if (data.getStatusBreakdown().isEmpty()) {
             Row row = sheet.createRow(rowIdx++);
@@ -171,14 +174,19 @@ public class LoadProtocolExcelService {
         createCell(header, 0, "Номер договора", styles.tableHeader);
         createCell(header, 1, "Комментарий", styles.tableHeader);
         createCell(header, 2, "", styles.tableHeader);
+        CellRangeAddress headerCommentRange = new CellRangeAddress(header.getRowNum(), header.getRowNum(), 1, 2);
+        sheet.addMergedRegion(headerCommentRange);
 
         for (LoadProtocolData.NotLoadedRow item : data.getNotLoadedRows()) {
             Row row = sheet.createRow(rowIdx++);
-            createCell(row, 0, item.getContractNumber() == null ? "" : item.getContractNumber(), styles.tableCell);
+            String contract = item.getContractNumber() == null ? "" : item.getContractNumber();
+            String comment = item.getComment() == null ? "" : item.getComment();
+            createCell(row, 0, contract, styles.tableCell);
             CellRangeAddress commentRange = new CellRangeAddress(row.getRowNum(), row.getRowNum(), 1, 2);
             sheet.addMergedRegion(commentRange);
-            createCell(row, 1, item.getComment() == null ? "" : item.getComment(), styles.tableCell);
+            createCell(row, 1, comment, styles.tableCell);
             createCell(row, 2, "", styles.tableCell);
+            adjustRowHeight(row, comment, 75);
         }
         if (data.getNotLoadedRows().isEmpty()) {
             Row row = sheet.createRow(rowIdx++);
@@ -188,6 +196,21 @@ public class LoadProtocolExcelService {
         }
         applyTableOuterBorder(sheet, tableStart, rowIdx - 1, 0, 2);
         return rowIdx;
+    }
+
+    /**
+     * Увеличивает высоту строки под перенос длинного текста.
+     */
+    private static void adjustRowHeight(Row row, String text, int approxCharsPerLine) {
+        if (text == null || text.isBlank()) {
+            return;
+        }
+        int lines = Math.max(1, (int) Math.ceil((double) text.length() / approxCharsPerLine));
+        // на случай пробелов/слов — минимум 2 строки для длинных статусов
+        if (text.length() > approxCharsPerLine) {
+            lines = Math.max(lines, 2);
+        }
+        row.setHeightInPoints(Math.max(15f, lines * 15f));
     }
 
     private static int sectionTitle(Sheet sheet, int rowIdx, String title, Styles styles) {
@@ -208,10 +231,12 @@ public class LoadProtocolExcelService {
         createCell(row, 0, label, styles.label);
         CellRangeAddress valueRange = new CellRangeAddress(rowIdx, rowIdx, 1, 2);
         sheet.addMergedRegion(valueRange);
-        createCell(row, 1, value == null ? "" : String.valueOf(value), styles.value);
+        String text = value == null ? "" : String.valueOf(value);
+        createCell(row, 1, text, styles.value);
         createCell(row, 2, "", styles.value);
         applyRegionBorder(new CellRangeAddress(rowIdx, rowIdx, 0, 0), sheet);
         applyRegionBorder(valueRange, sheet);
+        adjustRowHeight(row, text, 70);
         return rowIdx + 1;
     }
 
@@ -243,7 +268,8 @@ public class LoadProtocolExcelService {
     }
 
     private static String formatSum(BigDecimal sum) {
-        return sum == null ? "0" : sum.stripTrailingZeros().toPlainString();
+        BigDecimal value = sum == null ? BigDecimal.ZERO : sum;
+        return value.setScale(4, RoundingMode.HALF_UP).toPlainString();
     }
 
     private static String formatDuration(LoadProtocolData data) {
@@ -332,6 +358,7 @@ public class LoadProtocolExcelService {
             CellStyle value = workbook.createCellStyle();
             value.setFont(normalFont);
             value.setVerticalAlignment(VerticalAlignment.CENTER);
+            value.setWrapText(true);
             setThinBorder(value);
 
             CellStyle failure = workbook.createCellStyle();
