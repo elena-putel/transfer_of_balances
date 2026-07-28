@@ -14,9 +14,13 @@ public class TransferProperties {
     private String inputDirectory;
     private String processedDirectory;
     private String errorDirectory;
+    private String protocolDirectory;
+    private String softwareVersion = "1.0.0";
     private String reportSuffix = "r";
     private String fileExtension = ".045";
     private String dataFilePrefix = "epb";
+    private short defaultInOut = 1;
+    private short defaultCodeAdm = 1;
     private int defaultCustCode = 1;
     private int defaultTypeServA = 326;
     private int defaultCodOper = 45;

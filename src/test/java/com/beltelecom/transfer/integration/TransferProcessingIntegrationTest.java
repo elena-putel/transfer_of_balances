@@ -1,7 +1,7 @@
 package com.beltelecom.transfer.integration;
 
 import com.beltelecom.transfer.entity.TransferLoadLog;
-import com.beltelecom.transfer.repository.TransferBalanceRepository;
+import com.beltelecom.transfer.repository.CTransferRepository;
 import com.beltelecom.transfer.repository.TransferLoadLogRepository;
 import com.beltelecom.transfer.service.TransferProcessingService;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,6 +48,7 @@ class TransferProcessingIntegrationTest {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
+        registry.add("informix.datasource.enabled", () -> "false");
         registry.add("transfer.input-directory", () -> inputDir.toString());
         registry.add("transfer.processed-directory", () -> processedDir.toString());
         registry.add("transfer.error-directory", () -> errorDir.toString());
@@ -58,14 +59,14 @@ class TransferProcessingIntegrationTest {
     private TransferProcessingService processingService;
 
     @Autowired
-    private TransferBalanceRepository balanceRepository;
+    private CTransferRepository cTransferRepository;
 
     @Autowired
     private TransferLoadLogRepository loadLogRepository;
 
     @BeforeEach
     void cleanUp() {
-        balanceRepository.deleteAll();
+        cTransferRepository.deleteAll();
         loadLogRepository.deleteAll();
     }
 
@@ -78,7 +79,7 @@ class TransferProcessingIntegrationTest {
 
         assertThat(response.getFilesSucceeded()).isEqualTo(1);
         assertThat(response.getTotalRecords()).isEqualTo(8);
-        assertThat(balanceRepository.count()).isEqualTo(8);
+        assertThat(cTransferRepository.count()).isEqualTo(8);
         assertThat(loadLogRepository.findTopByOrderByStartedAtDesc())
                 .isPresent()
                 .get()
@@ -95,7 +96,7 @@ class TransferProcessingIntegrationTest {
         var response = processingService.processIncomingFiles();
 
         assertThat(response.getFilesFailed()).isEqualTo(1);
-        assertThat(balanceRepository.count()).isZero();
+        assertThat(cTransferRepository.count()).isZero();
         assertThat(loadLogRepository.findTopByOrderByStartedAtDesc())
                 .isPresent()
                 .get()
@@ -115,7 +116,7 @@ class TransferProcessingIntegrationTest {
         var secondRun = processingService.processIncomingFiles();
 
         assertThat(secondRun.getFilesFailed()).isEqualTo(1);
-        assertThat(balanceRepository.count()).isEqualTo(8);
+        assertThat(cTransferRepository.count()).isEqualTo(8);
     }
 
     private void copyTestFile(String name, Path targetDir) throws IOException {

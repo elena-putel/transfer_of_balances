@@ -19,8 +19,10 @@ public abstract class TransferMapper {
     @Autowired
     protected TransferProperties properties;
 
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "custCode", expression = "java(properties.getDefaultCustCode())")
+    @Mapping(target = "tnId", ignore = true)
+    @Mapping(target = "inOut", expression = "java(properties.getDefaultInOut())")
+    @Mapping(target = "codeAdm", expression = "java(properties.getDefaultCodeAdm())")
+    @Mapping(target = "custCode", ignore = true)
     @Mapping(target = "fioAskr", source = "dto.fioBillingA")
     @Mapping(target = "ndogBillingA", source = "dto.ndogBillingA")
     @Mapping(target = "accountA", source = "dto.accountA")
@@ -30,7 +32,7 @@ public abstract class TransferMapper {
     @Mapping(target = "typeServA", expression = "java(properties.getDefaultTypeServA())")
     @Mapping(target = "operation", source = "dto.summa", qualifiedByName = "resolveOperation")
     @Mapping(target = "summa", source = "dto.summa", qualifiedByName = "toStoredSumma")
-    @Mapping(target = "status", constant = "1")
+    @Mapping(target = "status", ignore = true)
     @Mapping(target = "dateInput", ignore = true)
     @Mapping(target = "dateMod", ignore = true)
     @Mapping(target = "codOper", expression = "java(properties.getDefaultCodOper())")

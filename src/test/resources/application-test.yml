@@ -9,6 +9,10 @@ spring:
   flyway:
     enabled: true
 
+informix:
+  datasource:
+    enabled: false
+
 transfer:
   input-directory: target/test-input
   processed-directory: target/test-processed

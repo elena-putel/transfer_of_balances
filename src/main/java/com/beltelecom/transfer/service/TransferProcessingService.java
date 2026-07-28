@@ -1,11 +1,13 @@
 package com.beltelecom.transfer.service;
 
 import com.beltelecom.transfer.config.TransferProperties;
+import com.beltelecom.transfer.dto.LoadProtocolData;
 import com.beltelecom.transfer.dto.ProcessResponse;
 import com.beltelecom.transfer.dto.TransferRecordDto;
 import com.beltelecom.transfer.dto.TransferReportDto;
 import com.beltelecom.transfer.dto.TransferStatusResponse;
 import com.beltelecom.transfer.dto.ValidationErrorDto;
+import com.beltelecom.transfer.entity.TransferBalance;
 import com.beltelecom.transfer.entity.TransferLoadLog;
 import com.beltelecom.transfer.exception.TransferProcessingException;
 import com.beltelecom.transfer.exception.ValidationFailedException;
@@ -27,7 +29,6 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -45,6 +46,9 @@ public class TransferProcessingService {
     private final TransferLoadLogRepository loadLogRepository;
     private final TransferMapper transferMapper;
     private final TransferMetrics metrics;
+    private final LoadProtocolAssembler protocolAssembler;
+    private final LoadProtocolExcelService protocolExcelService;
+    private final LoadErrorExcelService errorExcelService;
 
     public ProcessResponse processIncomingFiles() {
         long startTime = System.currentTimeMillis();
@@ -98,22 +102,26 @@ public class TransferProcessingService {
         String fileName = dataFile.getFileName().toString();
         Path reportFile = resolveReportFile(dataFile);
         TransferLoadLog loadLog = createLoadLog(fileName, reportFile);
+        LocalDateTime startedAt = loadLog.getStartedAt();
+        List<TransferRecordDto> records = List.of();
 
         try {
             if (!Files.exists(reportFile)) {
-                failLoad(loadLog, TransferLoadLog.LoadStatus.FAILED,
-                        "Не найден файл отчёта: " + reportFile.getFileName());
+                String error = "Не найден файл отчёта: " + reportFile.getFileName();
+                failLoad(loadLog, TransferLoadLog.LoadStatus.FAILED, error);
+                writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(), error);
                 moveToError(dataFile, reportFile);
                 metrics.incrementErrors(1);
                 return new FileProcessResult(false, 0);
             }
 
-            List<TransferRecordDto> records = fileParser.parseDataFile(dataFile);
+            records = fileParser.parseDataFile(dataFile);
             TransferReportDto report = fileParser.parseReportFile(reportFile);
 
             if (!fileName.equals(report.getFileName())) {
-                failLoad(loadLog, TransferLoadLog.LoadStatus.VALIDATION_ERROR,
-                        "Имя файла в отчёте (" + report.getFileName() + ") не совпадает с " + fileName);
+                String error = "Имя файла в отчёте (" + report.getFileName() + ") не совпадает с " + fileName;
+                failLoad(loadLog, TransferLoadLog.LoadStatus.VALIDATION_ERROR, error);
+                writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(), error);
                 moveToError(dataFile, reportFile);
                 metrics.incrementErrors(1);
                 return new FileProcessResult(false, 0);
@@ -129,9 +137,10 @@ public class TransferProcessingService {
 
             if (report.getChecksumSum() != null
                     && calculatedChecksum.compareTo(report.getChecksumSum()) != 0) {
-                failLoad(loadLog, TransferLoadLog.LoadStatus.CHECKSUM_ERROR,
-                        "Fail Fast: контрольная сумма не совпадает. Ожидается "
-                                + report.getChecksumSum() + ", рассчитано " + calculatedChecksum);
+                String error = "Fail Fast: контрольная сумма не совпадает. Ожидается "
+                        + report.getChecksumSum() + ", рассчитано " + calculatedChecksum;
+                failLoad(loadLog, TransferLoadLog.LoadStatus.CHECKSUM_ERROR, error);
+                writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(), error);
                 moveToError(dataFile, reportFile);
                 metrics.incrementErrors(records.size());
                 return new FileProcessResult(false, 0);
@@ -148,29 +157,71 @@ public class TransferProcessingService {
                         .reduce((a, b) -> a + "; " + b)
                         .orElse("Ошибка валидации");
                 failLoad(loadLog, TransferLoadLog.LoadStatus.VALIDATION_ERROR, errorMsg);
+                writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(), errorMsg);
                 moveToError(dataFile, reportFile);
                 metrics.incrementErrors(allErrors.size());
                 throw new ValidationFailedException(allErrors.stream().map(ValidationErrorDto::getMessage).toList());
             }
 
-            int saved = persistenceService.saveRecords(records, fileName);
-            completeLoad(loadLog, TransferLoadLog.LoadStatus.SUCCESS, saved, 0, null);
+            List<TransferBalance> saved = persistenceService.saveRecords(records, fileName);
+            completeLoad(loadLog, TransferLoadLog.LoadStatus.SUCCESS, saved.size(), 0, null);
+            writeSuccessReports(fileName, records, saved, startedAt, loadLog.getFinishedAt());
             moveToProcessed(dataFile, reportFile);
 
-            metrics.incrementProcessedRecords(saved);
+            metrics.incrementProcessedRecords(saved.size());
             metrics.incrementFilesProcessed();
 
-            log.info("Файл {} успешно обработан: {} записей", fileName, saved);
-            return new FileProcessResult(true, saved);
+            log.info("Файл {} успешно обработан: {} записей", fileName, saved.size());
+            return new FileProcessResult(true, saved.size());
 
         } catch (ValidationFailedException ex) {
             return new FileProcessResult(false, 0);
         } catch (Exception ex) {
             log.error("Ошибка обработки файла {}", fileName, ex);
             failLoad(loadLog, TransferLoadLog.LoadStatus.FAILED, ex.getMessage());
+            writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(),
+                    ex.getMessage() == null ? "Неизвестная ошибка" : ex.getMessage());
             moveToError(dataFile, reportFile);
             metrics.incrementErrors(1);
             return new FileProcessResult(false, 0);
+        }
+    }
+
+    private void writeSuccessReports(String fileName,
+                                     List<TransferRecordDto> records,
+                                     List<TransferBalance> saved,
+                                     LocalDateTime startedAt,
+                                     LocalDateTime finishedAt) {
+        try {
+            LoadProtocolData protocolData = protocolAssembler.assemble(
+                    fileName,
+                    records,
+                    saved,
+                    startedAt,
+                    finishedAt == null ? LocalDateTime.now() : finishedAt);
+            protocolExcelService.write(protocolData);
+            errorExcelService.write(protocolData);
+        } catch (Exception ex) {
+            log.warn("Не удалось сформировать протокол для {}: {}", fileName, ex.getMessage());
+        }
+    }
+
+    private void writeFailureReports(String fileName,
+                                     List<TransferRecordDto> records,
+                                     LocalDateTime startedAt,
+                                     LocalDateTime finishedAt,
+                                     String failureReason) {
+        try {
+            LoadProtocolData protocolData = protocolAssembler.assembleFailed(
+                    fileName,
+                    records,
+                    startedAt,
+                    finishedAt == null ? LocalDateTime.now() : finishedAt,
+                    failureReason);
+            protocolExcelService.write(protocolData);
+            errorExcelService.write(protocolData);
+        } catch (Exception ex) {
+            log.warn("Не удалось сформировать протокол ошибки для {}: {}", fileName, ex.getMessage());
         }
     }
 

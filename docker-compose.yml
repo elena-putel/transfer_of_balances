@@ -27,6 +27,7 @@ services:
       - ./data/incoming:/data/incoming
       - ./data/processed:/data/processed
       - ./data/error:/data/error
+      - ./data/protocole:/data/protocole
     depends_on:
       - postgres
 
