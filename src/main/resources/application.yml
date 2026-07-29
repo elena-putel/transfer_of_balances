@@ -36,23 +36,17 @@ informix:
       pool-name: informix-pool
 
 transfer:
-  input-directory: ${TRANSFER_INPUT_DIR:/data/incoming}
-  processed-directory: ${TRANSFER_PROCESSED_DIR:/data/processed}
-  error-directory: ${TRANSFER_ERROR_DIR:/data/error}
-  protocol-directory: ${TRANSFER_PROTOCOL_DIR:}
   software-version: ${TRANSFER_SOFTWARE_VERSION:1.0.0}
   report-suffix: r
   file-extension: ".045"
   data-file-prefix: epb
-  default-in-out: 1
   default-code-adm: 1
   default-cust-code: 1
   default-type-serv-a: 326
-  default-cod-oper: 45
   summa-scale: 4
   scheduled:
     enabled: ${TRANSFER_SCHEDULE_ENABLED:false}
-    cron: "0 */5 * * * *"
+    cron: "0 */10 9-11 * * *"
 
 resilience4j:
   retry:

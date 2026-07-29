@@ -1,5 +1,6 @@
 package com.beltelecom.transfer.repository;
 
+import com.beltelecom.transfer.util.FioNormalizer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Repository;
 
@@ -16,10 +17,10 @@ import java.util.concurrent.ConcurrentHashMap;
 @ConditionalOnProperty(prefix = "informix.datasource", name = "enabled", havingValue = "false")
 public class InMemoryA2SubscriberRepository implements A2SubscriberRepository {
 
-    private final Map<String, List<Integer>> storage = new ConcurrentHashMap<>();
+    private final Map<String, List<A2SubscriberMatch>> storage = new ConcurrentHashMap<>();
 
-    public void put(BigDecimal nomDogOb, String postRecipient, List<Integer> abCodes) {
-        storage.put(key(nomDogOb, postRecipient), new ArrayList<>(abCodes));
+    public void put(BigDecimal nomDogOb, String fio, List<A2SubscriberMatch> matches) {
+        storage.put(key(nomDogOb, fio), new ArrayList<>(matches));
     }
 
     public void clear() {
@@ -27,14 +28,13 @@ public class InMemoryA2SubscriberRepository implements A2SubscriberRepository {
     }
 
     @Override
-    public List<Integer> findAbCodes(BigDecimal nomDogOb, String postRecipient) {
-        List<Integer> found = storage.get(key(nomDogOb, postRecipient));
+    public List<A2SubscriberMatch> findMatches(BigDecimal nomDogOb, String fioFromFile) {
+        List<A2SubscriberMatch> found = storage.get(key(nomDogOb, fioFromFile));
         return found == null ? List.of() : List.copyOf(found);
     }
 
-    private static String key(BigDecimal nomDogOb, String postRecipient) {
-        String fio = postRecipient == null ? "" : postRecipient.trim().toLowerCase();
+    private static String key(BigDecimal nomDogOb, String fio) {
         String dog = nomDogOb == null ? "" : nomDogOb.stripTrailingZeros().toPlainString();
-        return dog + "|" + fio;
+        return dog + "|" + FioNormalizer.normalize(fio);
     }
 }

@@ -11,10 +11,13 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -34,7 +37,20 @@ public class LoadProtocolAssembler {
                                      LocalDateTime startedAt,
                                      LocalDateTime finishedAt,
                                      String filesMovedToPath) {
-        return assembleInternal(fileName, sourceRecords, savedEntities, startedAt, finishedAt, null, filesMovedToPath);
+        return assemble(fileName, sourceRecords, savedEntities, startedAt, finishedAt,
+                filesMovedToPath, Set.of(), YearMonth.now());
+    }
+
+    public LoadProtocolData assemble(String fileName,
+                                     List<TransferRecordDto> sourceRecords,
+                                     List<TransferBalance> savedEntities,
+                                     LocalDateTime startedAt,
+                                     LocalDateTime finishedAt,
+                                     String filesMovedToPath,
+                                     Set<String> ndogsAlreadyInCurrentMonth,
+                                     YearMonth currentMonth) {
+        return assembleInternal(fileName, sourceRecords, savedEntities, startedAt, finishedAt,
+                null, filesMovedToPath, ndogsAlreadyInCurrentMonth, currentMonth);
     }
 
     /**
@@ -56,11 +72,14 @@ public class LoadProtocolAssembler {
             notLoadedRows.add(LoadProtocolData.NotLoadedRow.builder()
                     .error(failureReason)
                     .transferDate(source.getBillDate())
-                    .applicationNumber(fileName)
+                    .applicationNumber(source.getNdogBillingA())
                     .fio(source.getFioBillingA())
-                    .contractNumber(source.getNdogBillingA())
+                    .contractNumber(source.getNdogBillingB())
                     .build());
         }
+        notLoadedRows.sort(Comparator.comparing(
+                LoadProtocolData.NotLoadedRow::getTransferDate,
+                Comparator.nullsLast(Comparator.naturalOrder())));
 
         InputStats input = calcInputStats(records);
 
@@ -78,6 +97,7 @@ public class LoadProtocolAssembler {
                 .notLoadedCount(records.size())
                 .notLoadedSum(notLoadedSum)
                 .notLoadedRows(notLoadedRows)
+                .errorProtocolRows(List.copyOf(notLoadedRows))
                 .build();
     }
 
@@ -87,7 +107,9 @@ public class LoadProtocolAssembler {
                                               LocalDateTime startedAt,
                                               LocalDateTime finishedAt,
                                               String failureReason,
-                                              String filesMovedToPath) {
+                                              String filesMovedToPath,
+                                              Set<String> ndogsAlreadyInCurrentMonth,
+                                              YearMonth currentMonth) {
         InputStats input = calcInputStats(sourceRecords);
 
         Map<Integer, StatusAccumulator> byStatus = new LinkedHashMap<>();
@@ -95,6 +117,12 @@ public class LoadProtocolAssembler {
         int notLoadedCount = 0;
         BigDecimal notLoadedSum = BigDecimal.ZERO;
         List<LoadProtocolData.NotLoadedRow> notLoadedRows = new ArrayList<>();
+        List<LoadProtocolData.NotLoadedRow> errorProtocolRows = new ArrayList<>();
+
+        Set<String> existingNdogs = ndogsAlreadyInCurrentMonth == null
+                ? Set.of()
+                : ndogsAlreadyInCurrentMonth;
+        YearMonth month = currentMonth == null ? YearMonth.now() : currentMonth;
 
         int size = Math.min(sourceRecords.size(), savedEntities.size());
         for (int i = 0; i < size; i++) {
@@ -106,22 +134,46 @@ public class LoadProtocolAssembler {
             loadedSum = loadedSum.add(summa);
             byStatus.computeIfAbsent(status, StatusAccumulator::new).add(summa);
 
+            List<String> errorParts = new ArrayList<>();
             if (AskrTransferStatus.isRejected(status)) {
                 notLoadedCount++;
                 notLoadedSum = notLoadedSum.add(summa);
+                String statusError = AskrTransferStatus.formatWithCode(status);
                 notLoadedRows.add(LoadProtocolData.NotLoadedRow.builder()
-                        .error(AskrTransferStatus.nameOf(status))
+                        .error(statusError)
                         .transferDate(source.getBillDate())
-                        .applicationNumber(fileName)
+                        .applicationNumber(source.getNdogBillingA())
                         .fio(source.getFioBillingA())
-                        .contractNumber(source.getNdogBillingA())
+                        .contractNumber(source.getNdogBillingB())
+                        .build());
+                errorParts.add(statusError);
+            }
+
+            List<String> attention = ErrorProtocolAttentionCollector.collect(source, existingNdogs, month);
+            errorParts.addAll(attention);
+
+            if (!errorParts.isEmpty()) {
+                errorProtocolRows.add(LoadProtocolData.NotLoadedRow.builder()
+                        .error(ErrorProtocolAttentionCollector.join(errorParts))
+                        .transferDate(source.getBillDate())
+                        .applicationNumber(source.getNdogBillingA())
+                        .fio(source.getFioBillingA())
+                        .contractNumber(source.getNdogBillingB())
                         .build());
             }
         }
+        notLoadedRows.sort(Comparator.comparing(
+                LoadProtocolData.NotLoadedRow::getTransferDate,
+                Comparator.nullsLast(Comparator.naturalOrder())));
+        errorProtocolRows.sort(Comparator.comparing(
+                LoadProtocolData.NotLoadedRow::getTransferDate,
+                Comparator.nullsLast(Comparator.naturalOrder())));
 
         List<LoadProtocolData.StatusBreakdown> breakdown = byStatus.values().stream()
+                .sorted(Comparator.comparingInt(acc -> acc.status))
                 .map(acc -> LoadProtocolData.StatusBreakdown.builder()
-                        .statusName(AskrTransferStatus.nameOf(acc.status))
+                        .statusCode(acc.status)
+                        .statusName(AskrTransferStatus.formatWithCode(acc.status))
                         .count(acc.count)
                         .sum(acc.sum)
                         .build())
@@ -141,6 +193,7 @@ public class LoadProtocolAssembler {
                 .notLoadedCount(notLoadedCount)
                 .notLoadedSum(notLoadedSum)
                 .notLoadedRows(notLoadedRows)
+                .errorProtocolRows(errorProtocolRows)
                 .build();
     }
 

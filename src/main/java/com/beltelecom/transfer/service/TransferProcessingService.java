@@ -14,7 +14,9 @@ import com.beltelecom.transfer.exception.ValidationFailedException;
 import com.beltelecom.transfer.mapper.TransferMapper;
 import com.beltelecom.transfer.metrics.TransferMetrics;
 import com.beltelecom.transfer.parser.TransferFileParser;
+import com.beltelecom.transfer.repository.CTransferRepository;
 import com.beltelecom.transfer.repository.TransferLoadLogRepository;
+import com.beltelecom.transfer.service.TransferWorkspaceService.Workspace;
 import com.beltelecom.transfer.validation.TransferRecordValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,13 +27,18 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Slf4j
@@ -49,14 +56,41 @@ public class TransferProcessingService {
     private final LoadProtocolAssembler protocolAssembler;
     private final LoadProtocolExcelService protocolExcelService;
     private final LoadErrorExcelService errorExcelService;
+    private final MonthlyAllProtocolService monthlyAllProtocolService;
+    private final CTransferRepository cTransferRepository;
+    private final TransferWorkspaceService workspaceService;
 
     public ProcessResponse processIncomingFiles() {
         long startTime = System.currentTimeMillis();
-        Path inputDir = Path.of(properties.getInputDirectory());
-        ensureDirectoryExists(inputDir);
+
+        Optional<Workspace> workspaceFromDb = workspaceService.resolveCurrentWorkspace();
+        if (workspaceFromDb.isEmpty()) {
+            log.error(TransferWorkspaceService.NO_PATH_IN_DB);
+            saveConfigFailureLog(TransferWorkspaceService.NO_PATH_IN_DB);
+            return failureResponse(TransferWorkspaceService.NO_PATH_IN_DB);
+        }
+
+        Workspace workspace = workspaceFromDb.get();
+        if (!workspace.exists()) {
+            String message = TransferWorkspaceService.DIRECTORY_MISSING + ": " + workspace.basePath();
+            log.error(message);
+            saveConfigFailureLog(message);
+            return failureResponse(message);
+        }
+
+        workspace.ensureOutAndPrt();
+
+        Path inputDir = workspace.in();
+        if (!Files.isDirectory(inputDir)) {
+            writeMonthlyAllProtocol();
+            return ProcessResponse.builder()
+                    .message("Каталог входящих файлов не найден: " + inputDir)
+                    .build();
+        }
 
         List<Path> dataFiles = findDataFiles(inputDir);
         if (dataFiles.isEmpty()) {
+            writeMonthlyAllProtocol();
             return ProcessResponse.builder()
                     .message("Файлы для обработки не найдены в " + inputDir)
                     .build();
@@ -64,7 +98,7 @@ public class TransferProcessingService {
 
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<CompletableFuture<FileProcessResult>> futures = dataFiles.stream()
-                    .map(file -> CompletableFuture.supplyAsync(() -> processFilePair(file), executor))
+                    .map(file -> CompletableFuture.supplyAsync(() -> processFilePair(file, workspace), executor))
                     .toList();
 
             List<FileProcessResult> results = futures.stream()
@@ -78,6 +112,8 @@ public class TransferProcessingService {
             long duration = System.currentTimeMillis() - startTime;
             metrics.recordDuration(duration);
 
+            writeMonthlyAllProtocol();
+
             return ProcessResponse.builder()
                     .filesProcessed(results.size())
                     .filesSucceeded(succeeded)
@@ -86,6 +122,41 @@ public class TransferProcessingService {
                     .message(String.format("Обработано файлов: %d, успешно: %d, ошибок: %d, записей: %d, время: %d ms",
                             results.size(), succeeded, failed, totalRecords, duration))
                     .build();
+        }
+    }
+
+    private static ProcessResponse failureResponse(String message) {
+        return ProcessResponse.builder()
+                .filesProcessed(0)
+                .filesSucceeded(0)
+                .filesFailed(1)
+                .totalRecords(0)
+                .message(message)
+                .build();
+    }
+
+    /** Ошибка конфигурации путей: без имени файла и прочих полей загрузки. */
+    private void saveConfigFailureLog(String errorMessage) {
+        LocalDateTime now = LocalDateTime.now();
+        TransferLoadLog logEntry = TransferLoadLog.builder()
+                .idRegion(TransferWorkspaceService.CURRENT_REGION.getId())
+                .status(TransferLoadLog.LoadStatus.FAILED)
+                .recordsTotal(0)
+                .recordsProcessed(0)
+                .recordsFailed(0)
+                .errorMessage(errorMessage)
+                .startedAt(now)
+                .finishedAt(now)
+                .durationMs(0L)
+                .build();
+        loadLogRepository.save(logEntry);
+    }
+
+    private void writeMonthlyAllProtocol() {
+        try {
+            monthlyAllProtocolService.writeMonthlyReport();
+        } catch (Exception ex) {
+            log.warn("Не удалось сформировать сводный протокол _all.xlsx: {}", ex.getMessage());
         }
     }
 
@@ -98,19 +169,20 @@ public class TransferProcessingService {
                         .build());
     }
 
-    private FileProcessResult processFilePair(Path dataFile) {
+    private FileProcessResult processFilePair(Path dataFile, Workspace workspace) {
         String fileName = dataFile.getFileName().toString();
         Path reportFile = resolveReportFile(dataFile);
         TransferLoadLog loadLog = createLoadLog(fileName, reportFile);
         LocalDateTime startedAt = loadLog.getStartedAt();
         List<TransferRecordDto> records = List.of();
+        String outPath = workspace.out().toString();
 
         try {
             if (!Files.exists(reportFile)) {
                 String error = "Не найден файл отчёта: " + reportFile.getFileName();
                 failLoad(loadLog, TransferLoadLog.LoadStatus.FAILED, error);
-                writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(), error);
-                moveToError(dataFile, reportFile);
+                writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(), error, outPath);
+                moveToOut(dataFile, reportFile, workspace);
                 metrics.incrementErrors(1);
                 return new FileProcessResult(false, 0);
             }
@@ -121,8 +193,8 @@ public class TransferProcessingService {
             if (!fileName.equals(report.getFileName())) {
                 String error = "Имя файла в отчёте (" + report.getFileName() + ") не совпадает с " + fileName;
                 failLoad(loadLog, TransferLoadLog.LoadStatus.VALIDATION_ERROR, error);
-                writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(), error);
-                moveToError(dataFile, reportFile);
+                writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(), error, outPath);
+                moveToOut(dataFile, reportFile, workspace);
                 metrics.incrementErrors(1);
                 return new FileProcessResult(false, 0);
             }
@@ -140,8 +212,26 @@ public class TransferProcessingService {
                 String error = "Fail Fast: контрольная сумма не совпадает. Ожидается "
                         + report.getChecksumSum() + ", рассчитано " + calculatedChecksum;
                 failLoad(loadLog, TransferLoadLog.LoadStatus.CHECKSUM_ERROR, error);
-                writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(), error);
-                moveToError(dataFile, reportFile);
+                writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(), error, outPath);
+                moveToOut(dataFile, reportFile, workspace);
+                metrics.incrementErrors(records.size());
+                return new FileProcessResult(false, 0);
+            }
+
+            if (cTransferRepository.existsByFlFile(fileName)) {
+                String error = "Файл с таким именем загружен";
+                failLoad(loadLog, TransferLoadLog.LoadStatus.VALIDATION_ERROR, error);
+                writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(), error, outPath);
+                moveToOut(dataFile, reportFile, workspace);
+                metrics.incrementErrors(1);
+                return new FileProcessResult(false, 0);
+            }
+
+            if (validator.hasDuplicateRecords(records)) {
+                String error = "В файле есть дублирующиеся записи";
+                failLoad(loadLog, TransferLoadLog.LoadStatus.VALIDATION_ERROR, error);
+                writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(), error, outPath);
+                moveToOut(dataFile, reportFile, workspace);
                 metrics.incrementErrors(records.size());
                 return new FileProcessResult(false, 0);
             }
@@ -157,16 +247,20 @@ public class TransferProcessingService {
                         .reduce((a, b) -> a + "; " + b)
                         .orElse("Ошибка валидации");
                 failLoad(loadLog, TransferLoadLog.LoadStatus.VALIDATION_ERROR, errorMsg);
-                writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(), errorMsg);
-                moveToError(dataFile, reportFile);
+                writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(), errorMsg, outPath);
+                moveToOut(dataFile, reportFile, workspace);
                 metrics.incrementErrors(allErrors.size());
                 throw new ValidationFailedException(allErrors.stream().map(ValidationErrorDto::getMessage).toList());
             }
 
+            YearMonth currentMonth = YearMonth.now();
+            Set<String> ndogsAlreadyInCurrentMonth = findNdogsAlreadyInCurrentMonth(records, currentMonth);
+
             List<TransferBalance> saved = persistenceService.saveRecords(records, fileName);
             completeLoad(loadLog, TransferLoadLog.LoadStatus.SUCCESS, saved.size(), 0, null);
-            writeSuccessReports(fileName, records, saved, startedAt, loadLog.getFinishedAt());
-            moveToProcessed(dataFile, reportFile);
+            writeSuccessReports(fileName, records, saved, startedAt, loadLog.getFinishedAt(),
+                    ndogsAlreadyInCurrentMonth, currentMonth, outPath);
+            moveToOut(dataFile, reportFile, workspace);
 
             metrics.incrementProcessedRecords(saved.size());
             metrics.incrementFilesProcessed();
@@ -180,8 +274,8 @@ public class TransferProcessingService {
             log.error("Ошибка обработки файла {}", fileName, ex);
             failLoad(loadLog, TransferLoadLog.LoadStatus.FAILED, ex.getMessage());
             writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(),
-                    ex.getMessage() == null ? "Неизвестная ошибка" : ex.getMessage());
-            moveToError(dataFile, reportFile);
+                    ex.getMessage() == null ? "Неизвестная ошибка" : ex.getMessage(), outPath);
+            moveToOut(dataFile, reportFile, workspace);
             metrics.incrementErrors(1);
             return new FileProcessResult(false, 0);
         }
@@ -191,7 +285,10 @@ public class TransferProcessingService {
                                      List<TransferRecordDto> records,
                                      List<TransferBalance> saved,
                                      LocalDateTime startedAt,
-                                     LocalDateTime finishedAt) {
+                                     LocalDateTime finishedAt,
+                                     Set<String> ndogsAlreadyInCurrentMonth,
+                                     YearMonth currentMonth,
+                                     String filesMovedToPath) {
         try {
             LoadProtocolData protocolData = protocolAssembler.assemble(
                     fileName,
@@ -199,7 +296,9 @@ public class TransferProcessingService {
                     saved,
                     startedAt,
                     finishedAt == null ? LocalDateTime.now() : finishedAt,
-                    resolveDirectoryPath(properties.getProcessedDirectory()));
+                    filesMovedToPath,
+                    ndogsAlreadyInCurrentMonth,
+                    currentMonth);
             protocolExcelService.write(protocolData);
             errorExcelService.write(protocolData);
         } catch (Exception ex) {
@@ -207,11 +306,26 @@ public class TransferProcessingService {
         }
     }
 
+    private Set<String> findNdogsAlreadyInCurrentMonth(List<TransferRecordDto> records, YearMonth currentMonth) {
+        Set<String> ndogs = records.stream()
+                .map(TransferRecordDto::getNdogBillingA)
+                .filter(v -> v != null && !v.isBlank())
+                .map(String::trim)
+                .collect(Collectors.toSet());
+        if (ndogs.isEmpty()) {
+            return Set.of();
+        }
+        LocalDate from = currentMonth.atDay(1);
+        LocalDate to = currentMonth.plusMonths(1).atDay(1);
+        return cTransferRepository.findNdogBillingAWithBillDateInRange(ndogs, from, to);
+    }
+
     private void writeFailureReports(String fileName,
                                      List<TransferRecordDto> records,
                                      LocalDateTime startedAt,
                                      LocalDateTime finishedAt,
-                                     String failureReason) {
+                                     String failureReason,
+                                     String filesMovedToPath) {
         try {
             LoadProtocolData protocolData = protocolAssembler.assembleFailed(
                     fileName,
@@ -219,7 +333,7 @@ public class TransferProcessingService {
                     startedAt,
                     finishedAt == null ? LocalDateTime.now() : finishedAt,
                     failureReason,
-                    resolveDirectoryPath(properties.getErrorDirectory()));
+                    filesMovedToPath);
             protocolExcelService.write(protocolData);
             errorExcelService.write(protocolData);
         } catch (Exception ex) {
@@ -227,12 +341,9 @@ public class TransferProcessingService {
         }
     }
 
-    private static String resolveDirectoryPath(String directory) {
-        return Path.of(directory).toAbsolutePath().normalize().toString();
-    }
-
     private TransferLoadLog createLoadLog(String fileName, Path reportFile) {
         TransferLoadLog logEntry = TransferLoadLog.builder()
+                .idRegion(TransferWorkspaceService.CURRENT_REGION.getId())
                 .flFile(fileName)
                 .reportFile(reportFile.getFileName().toString())
                 .status(TransferLoadLog.LoadStatus.IN_PROGRESS)
@@ -282,34 +393,20 @@ public class TransferProcessingService {
         return dataFile.getParent().resolve(reportName);
     }
 
-    private void moveToProcessed(Path dataFile, Path reportFile) {
-        moveFile(dataFile, Path.of(properties.getProcessedDirectory()));
+    private void moveToOut(Path dataFile, Path reportFile, Workspace workspace) {
+        Path outDir = workspace.out();
+        workspace.ensureOutAndPrt();
+        moveFile(dataFile, outDir);
         if (Files.exists(reportFile)) {
-            moveFile(reportFile, Path.of(properties.getProcessedDirectory()));
-        }
-    }
-
-    private void moveToError(Path dataFile, Path reportFile) {
-        moveFile(dataFile, Path.of(properties.getErrorDirectory()));
-        if (Files.exists(reportFile)) {
-            moveFile(reportFile, Path.of(properties.getErrorDirectory()));
+            moveFile(reportFile, outDir);
         }
     }
 
     private void moveFile(Path source, Path targetDir) {
-        ensureDirectoryExists(targetDir);
         try {
             Files.move(source, targetDir.resolve(source.getFileName()), StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             log.warn("Не удалось переместить файл {}: {}", source, e.getMessage());
-        }
-    }
-
-    private void ensureDirectoryExists(Path dir) {
-        try {
-            Files.createDirectories(dir);
-        } catch (IOException e) {
-            throw new TransferProcessingException("IO_ERROR", "Не удалось создать каталог: " + dir, e);
         }
     }
 

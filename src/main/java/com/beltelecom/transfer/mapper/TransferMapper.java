@@ -20,37 +20,29 @@ public abstract class TransferMapper {
     protected TransferProperties properties;
 
     @Mapping(target = "tnId", ignore = true)
-    @Mapping(target = "inOut", expression = "java(properties.getDefaultInOut())")
+    @Mapping(target = "inOut", constant = "3")
     @Mapping(target = "codeAdm", expression = "java(properties.getDefaultCodeAdm())")
     @Mapping(target = "custCode", ignore = true)
-    @Mapping(target = "fioAskr", source = "dto.fioBillingA")
+    @Mapping(target = "fioAskr", ignore = true)
     @Mapping(target = "ndogBillingA", source = "dto.ndogBillingA")
     @Mapping(target = "accountA", source = "dto.accountA")
     @Mapping(target = "ndogBillingB", source = "dto.ndogBillingB")
     @Mapping(target = "fioBillingA", source = "dto.fioBillingA")
     @Mapping(target = "billDate", source = "dto.billDate")
     @Mapping(target = "typeServA", expression = "java(properties.getDefaultTypeServA())")
-    @Mapping(target = "operation", source = "dto.summa", qualifiedByName = "resolveOperation")
+    @Mapping(target = "operation", constant = "3")
     @Mapping(target = "summa", source = "dto.summa", qualifiedByName = "toStoredSumma")
     @Mapping(target = "status", ignore = true)
     @Mapping(target = "dateInput", ignore = true)
     @Mapping(target = "dateMod", ignore = true)
-    @Mapping(target = "codOper", expression = "java(properties.getDefaultCodOper())")
+    @Mapping(target = "codOper", constant = "20000")
     @Mapping(target = "comment", ignore = true)
-    @Mapping(target = "billTypeA", ignore = true)
+    @Mapping(target = "billTypeA", constant = "2")
     @Mapping(target = "typeEnter", constant = "0")
     @Mapping(target = "flFile", source = "fileName")
     public abstract TransferBalance toEntity(TransferRecordDto dto, String fileName);
 
     public abstract TransferStatusResponse toStatusResponse(TransferLoadLog log);
-
-    @Named("resolveOperation")
-    protected Short resolveOperation(BigDecimal summa) {
-        if (summa == null || summa.signum() == 0) {
-            return 0;
-        }
-        return summa.signum() > 0 ? (short) 1 : (short) 2;
-    }
 
     @Named("toStoredSumma")
     protected BigDecimal toStoredSumma(BigDecimal summa) {

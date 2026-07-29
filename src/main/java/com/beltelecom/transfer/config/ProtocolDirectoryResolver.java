@@ -1,26 +1,27 @@
 package com.beltelecom.transfer.config;
 
+import com.beltelecom.transfer.exception.TransferProcessingException;
+import com.beltelecom.transfer.service.TransferWorkspaceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.nio.file.Path;
 
 /**
- * Каталог протоколов: {@code <корень data>/protocole}.
+ * Каталог протоколов: {@code {transfer_path.path}/prt}.
+ * Базовый каталог должен уже существовать — здесь его не создаём.
  */
 @Component
 @RequiredArgsConstructor
 public class ProtocolDirectoryResolver {
 
-    private final TransferProperties properties;
+    private final TransferWorkspaceService workspaceService;
 
     public Path resolve() {
-        String configured = properties.getProtocolDirectory();
-        if (configured != null && !configured.isBlank()) {
-            return Path.of(configured);
+        TransferWorkspaceService.Workspace workspace = workspaceService.requireCurrentWorkspace();
+        if (!workspace.exists()) {
+            throw new TransferProcessingException("NO_DIRECTORY", TransferWorkspaceService.DIRECTORY_MISSING);
         }
-        Path inputDir = Path.of(properties.getInputDirectory()).toAbsolutePath().normalize();
-        Path dataRoot = inputDir.getParent() != null ? inputDir.getParent() : inputDir;
-        return dataRoot.resolve("protocole");
+        return workspace.prt();
     }
 }

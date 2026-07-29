@@ -64,6 +64,54 @@ class TransferRecordValidatorTest {
         assertThat(errors).anyMatch(e -> "checksum".equals(e.getField()));
     }
 
+    @Test
+    void shouldDetectDuplicateRecordsIgnoringFioCase() {
+        TransferRecordDto first = TransferRecordDto.builder()
+                .lineNumber(1)
+                .ndogBillingA("1707010487904")
+                .accountA("74813106")
+                .ndogBillingB("17070104879")
+                .fioBillingA("Иванов Иван")
+                .summa(new BigDecimal("10.00"))
+                .billDate(java.time.LocalDate.of(2026, 7, 1))
+                .build();
+        TransferRecordDto duplicate = TransferRecordDto.builder()
+                .lineNumber(2)
+                .ndogBillingA("1707010487904")
+                .accountA("74813106")
+                .ndogBillingB("17070104879")
+                .fioBillingA("иванов иван")
+                .summa(new BigDecimal("99.00"))
+                .billDate(java.time.LocalDate.of(2026, 7, 1))
+                .build();
+
+        assertThat(validator.hasDuplicateRecords(List.of(first, duplicate))).isTrue();
+    }
+
+    @Test
+    void shouldNotTreatDifferentBillDateAsDuplicate() {
+        TransferRecordDto first = TransferRecordDto.builder()
+                .lineNumber(1)
+                .ndogBillingA("1707010487904")
+                .accountA("74813106")
+                .ndogBillingB("17070104879")
+                .fioBillingA("Иванов")
+                .summa(new BigDecimal("10.00"))
+                .billDate(java.time.LocalDate.of(2026, 7, 1))
+                .build();
+        TransferRecordDto second = TransferRecordDto.builder()
+                .lineNumber(2)
+                .ndogBillingA("1707010487904")
+                .accountA("74813106")
+                .ndogBillingB("17070104879")
+                .fioBillingA("Иванов")
+                .summa(new BigDecimal("10.00"))
+                .billDate(java.time.LocalDate.of(2026, 7, 2))
+                .build();
+
+        assertThat(validator.hasDuplicateRecords(List.of(first, second))).isFalse();
+    }
+
     @ParameterizedTest
     @CsvSource({
             "1707010487904, true",

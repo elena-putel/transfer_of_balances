@@ -14,6 +14,7 @@
     <groupId>com.beltelecom</groupId>
     <artifactId>transfer-of-balances</artifactId>
     <version>1.0.0-SNAPSHOT</version>
+    <packaging>war</packaging>
     <name>transfer-of-balances</name>
     <description>Микросервис загрузки переноса балансов из файлов .045</description>
 
@@ -29,6 +30,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-tomcat</artifactId>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -4,6 +4,7 @@ import com.beltelecom.transfer.config.TransferProperties;
 import com.beltelecom.transfer.domain.AskrTransferStatus;
 import com.beltelecom.transfer.dto.TransferRecordDto;
 import com.beltelecom.transfer.entity.TransferBalance;
+import com.beltelecom.transfer.repository.A2SubscriberMatch;
 import com.beltelecom.transfer.repository.A2SubscriberRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +16,7 @@ import java.util.List;
 /**
  * Определение плательщика по {@code ratsg:a2} и проставление статуса записи.
  * <ul>
- *   <li>однозначное совпадение → status=4, cust_code=ab_code</li>
+ *   <li>однозначное совпадение → status=4, cust_code=ab_code, fio_askr=ФИО из a2</li>
  *   <li>несколько записей → status=17</li>
  *   <li>не найден → status=18</li>
  * </ul>
@@ -37,29 +38,31 @@ public class PayerResolutionService {
             return;
         }
 
-        String postRecipient = dto.getFioBillingA() == null ? "" : dto.getFioBillingA().trim();
-        List<Integer> abCodes = a2SubscriberRepository.findAbCodes(nomDogOb, postRecipient);
+        String fio = dto.getFioBillingA() == null ? "" : dto.getFioBillingA().trim();
+        List<A2SubscriberMatch> matches = a2SubscriberRepository.findMatches(nomDogOb, fio);
 
-        if (abCodes.isEmpty()) {
+        if (matches.isEmpty()) {
             applyNotFound(entity);
-            log.debug("Строка {}: абонент не найден (nom_dog_ob={}, post_recipient={}) — status={}",
-                    dto.getLineNumber(), nomDogOb, postRecipient,
+            log.debug("Строка {}: абонент не найден (nom_dog_ob={}, fio={}) — status={}",
+                    dto.getLineNumber(), nomDogOb, fio,
                     AskrTransferStatus.REJECT_SUBSCRIBER_NOT_FOUND);
             return;
         }
 
-        if (abCodes.size() > 1) {
+        if (matches.size() > 1) {
             applyMultiple(entity);
             log.debug("Строка {}: найдено {} абонентов — status={}",
-                    dto.getLineNumber(), abCodes.size(),
+                    dto.getLineNumber(), matches.size(),
                     AskrTransferStatus.REJECT_MULTIPLE_SUBSCRIBERS);
             return;
         }
 
-        entity.setCustCode(abCodes.getFirst());
+        A2SubscriberMatch match = matches.getFirst();
+        entity.setCustCode(match.abCode());
+        entity.setFioAskr(match.fullName());
         entity.setStatus(AskrTransferStatus.TO_PROCESS);
-        log.debug("Строка {}: плательщик ab_code={} — status={}",
-                dto.getLineNumber(), abCodes.getFirst(), AskrTransferStatus.TO_PROCESS);
+        log.debug("Строка {}: плательщик ab_code={}, fio_askr={} — status={}",
+                dto.getLineNumber(), match.abCode(), match.fullName(), AskrTransferStatus.TO_PROCESS);
     }
 
     private void applyNotFound(TransferBalance entity) {

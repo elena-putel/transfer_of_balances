@@ -4,6 +4,7 @@ import com.beltelecom.transfer.config.TransferProperties;
 import com.beltelecom.transfer.domain.AskrTransferStatus;
 import com.beltelecom.transfer.dto.TransferRecordDto;
 import com.beltelecom.transfer.entity.TransferBalance;
+import com.beltelecom.transfer.repository.A2SubscriberMatch;
 import com.beltelecom.transfer.repository.InMemoryA2SubscriberRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,14 +29,16 @@ class PayerResolutionServiceTest {
     }
 
     @Test
-    void shouldSetStatus4AndCustCodeWhenUniqueMatch() {
-        a2Repository.put(new BigDecimal("17070104879"), "Куренкова Светлана Ивановна", List.of(100500));
+    void shouldSetStatus4CustCodeAndFioAskrWhenUniqueMatch() {
+        a2Repository.put(new BigDecimal("17070104879"), "Куренкова Светлана Ивановна",
+                List.of(new A2SubscriberMatch(100500, "Куренкова Светлана Ивановна")));
 
         TransferBalance entity = new TransferBalance();
         service.resolve(entity, sampleDto("17070104879", "Куренкова Светлана Ивановна"));
 
         assertThat(entity.getStatus()).isEqualTo(AskrTransferStatus.TO_PROCESS);
         assertThat(entity.getCustCode()).isEqualTo(100500);
+        assertThat(entity.getFioAskr()).isEqualTo("Куренкова Светлана Ивановна");
     }
 
     @Test
@@ -45,17 +48,34 @@ class PayerResolutionServiceTest {
 
         assertThat(entity.getStatus()).isEqualTo(AskrTransferStatus.REJECT_SUBSCRIBER_NOT_FOUND);
         assertThat(entity.getCustCode()).isEqualTo(1);
+        assertThat(entity.getFioAskr()).isNull();
     }
 
     @Test
     void shouldSetStatus17WhenMultipleFound() {
-        a2Repository.put(new BigDecimal("17070104879"), "Куренкова Светлана Ивановна", List.of(1, 2));
+        a2Repository.put(new BigDecimal("17070104879"), "Куренкова Светлана Ивановна",
+                List.of(
+                        new A2SubscriberMatch(1, "Куренкова Светлана Ивановна"),
+                        new A2SubscriberMatch(2, "Куренкова Светлана Ивановна")));
 
         TransferBalance entity = new TransferBalance();
         service.resolve(entity, sampleDto("17070104879", "Куренкова Светлана Ивановна"));
 
         assertThat(entity.getStatus()).isEqualTo(AskrTransferStatus.REJECT_MULTIPLE_SUBSCRIBERS);
         assertThat(entity.getCustCode()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldMatchWhenYoAndYeDiffer() {
+        a2Repository.put(new BigDecimal("17070104879"), "Королёва Алёна",
+                List.of(new A2SubscriberMatch(77, "Королёва Алёна")));
+
+        TransferBalance entity = new TransferBalance();
+        service.resolve(entity, sampleDto("17070104879", "Королева Алена"));
+
+        assertThat(entity.getStatus()).isEqualTo(AskrTransferStatus.TO_PROCESS);
+        assertThat(entity.getCustCode()).isEqualTo(77);
+        assertThat(entity.getFioAskr()).isEqualTo("Королёва Алёна");
     }
 
     private static TransferRecordDto sampleDto(String ndogB, String fio) {

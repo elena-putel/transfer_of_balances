@@ -30,7 +30,10 @@ public class TransferLoadLog {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "fl_file", nullable = false, length = 22)
+    @Column(name = "id_region", nullable = false)
+    private Integer idRegion;
+
+    @Column(name = "fl_file", length = 22)
     private String flFile;
 
     @Column(name = "report_file", length = 22)

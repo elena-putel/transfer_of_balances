@@ -27,6 +27,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -40,10 +41,17 @@ public class LoadErrorExcelService {
     private final ProtocolDirectoryResolver protocolDirectoryResolver;
 
     public Path write(LoadProtocolData data) {
+        List<LoadProtocolData.NotLoadedRow> rows = data.getErrorProtocolRows() != null
+                ? data.getErrorProtocolRows()
+                : data.getNotLoadedRows();
+        return writeNamed(data.getFileName() + "_error.xlsx", rows);
+    }
+
+    public Path writeNamed(String outputFileName, List<LoadProtocolData.NotLoadedRow> rows) {
         Path dir = protocolDirectoryResolver.resolve();
         ensureDirectory(dir);
 
-        Path target = dir.resolve(data.getFileName() + "_error.xlsx");
+        Path target = dir.resolve(outputFileName);
 
         try (Workbook workbook = new XSSFWorkbook();
              OutputStream out = Files.newOutputStream(target)) {
@@ -53,7 +61,7 @@ public class LoadErrorExcelService {
             int rowIdx = 0;
             rowIdx = writeTitle(sheet, rowIdx, styles);
             rowIdx++;
-            writeTable(sheet, rowIdx, data, styles);
+            writeTable(sheet, rowIdx, rows, styles);
 
             sheet.setColumnWidth(0, 55 * 256);
             sheet.setColumnWidth(1, 22 * 256);
@@ -62,11 +70,11 @@ public class LoadErrorExcelService {
             sheet.setColumnWidth(4, 22 * 256);
 
             workbook.write(out);
-            log.info("Файл ошибок сохранён: {}", target);
+            log.info("Файл протокола сохранён: {}", target);
             return target;
         } catch (IOException ex) {
             throw new TransferProcessingException("PROTOCOL_ERROR",
-                    "Не удалось сохранить файл ошибок: " + target, ex);
+                    "Не удалось сохранить файл протокола: " + target, ex);
         }
     }
 
@@ -85,7 +93,7 @@ public class LoadErrorExcelService {
         return rowIdx + 1;
     }
 
-    private void writeTable(Sheet sheet, int rowIdx, LoadProtocolData data, Styles styles) {
+    private void writeTable(Sheet sheet, int rowIdx, List<LoadProtocolData.NotLoadedRow> rows, Styles styles) {
         int tableStart = rowIdx;
 
         Row header = sheet.createRow(rowIdx++);
@@ -95,7 +103,7 @@ public class LoadErrorExcelService {
         createCell(header, 3, "ФИО", styles.tableHeader);
         createCell(header, 4, "Номер договора", styles.tableHeaderCenter);
 
-        for (LoadProtocolData.NotLoadedRow item : data.getNotLoadedRows()) {
+        for (LoadProtocolData.NotLoadedRow item : rows) {
             Row row = sheet.createRow(rowIdx++);
             createCell(row, 0, nullToEmpty(item.getError()), styles.tableCell);
             createCell(row, 1, formatDate(item.getTransferDate()), styles.tableCellCenter);
@@ -104,7 +112,7 @@ public class LoadErrorExcelService {
             createCell(row, 4, nullToEmpty(item.getContractNumber()), styles.tableCellCenter);
         }
 
-        if (data.getNotLoadedRows().isEmpty()) {
+        if (rows.isEmpty()) {
             Row row = sheet.createRow(rowIdx++);
             for (int col = 0; col <= 4; col++) {
                 createCell(row, col, "", styles.tableCell);

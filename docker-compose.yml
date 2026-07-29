@@ -20,14 +20,9 @@ services:
       DB_NAME: transfer_balances
       DB_USER: transfer_user
       DB_PASSWORD: transfer_pass
-      TRANSFER_INPUT_DIR: /data/incoming
-      TRANSFER_PROCESSED_DIR: /data/processed
-      TRANSFER_ERROR_DIR: /data/error
     volumes:
-      - ./data/incoming:/data/incoming
-      - ./data/processed:/data/processed
-      - ./data/error:/data/error
-      - ./data/protocole:/data/protocole
+      # Базовый путь задаётся в transfer_path (например /data); внутри: in, out, prt
+      - ./data:/data
     depends_on:
       - postgres
 

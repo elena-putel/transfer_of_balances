@@ -20,6 +20,7 @@ public class TransferPersistenceService {
 
     private final CTransferRepository cTransferRepository;
     private final TransferMapper transferMapper;
+    private final SideAResolutionService sideAResolutionService;
     private final PayerResolutionService payerResolutionService;
 
     @Retry(name = "database")
@@ -27,7 +28,9 @@ public class TransferPersistenceService {
         List<TransferBalance> entities = new ArrayList<>(records.size());
         for (TransferRecordDto record : records) {
             TransferBalance entity = transferMapper.toEntity(record, fileName);
-            payerResolutionService.resolve(entity, record);
+            if (sideAResolutionService.resolve(entity, record)) {
+                payerResolutionService.resolve(entity, record);
+            }
             entities.add(entity);
         }
         try {

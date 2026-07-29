@@ -3,11 +3,14 @@ package com.beltelecom.transfer.validation;
 import com.beltelecom.transfer.dto.TransferRecordDto;
 import com.beltelecom.transfer.dto.TransferReportDto;
 import com.beltelecom.transfer.dto.ValidationErrorDto;
+import com.beltelecom.transfer.util.FioNormalizer;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 @Component
@@ -37,6 +40,32 @@ public class TransferRecordValidator {
                     () -> validateBillDate(record.getBillDate()));
         }
         return errors;
+    }
+
+    /**
+     * Дубликаты по полям 1,2,3,4,6 файла (ФИО без учёта регистра).
+     */
+    public boolean hasDuplicateRecords(List<TransferRecordDto> records) {
+        Set<String> seen = new HashSet<>();
+        for (TransferRecordDto record : records) {
+            String key = duplicateKey(record);
+            if (!seen.add(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String duplicateKey(TransferRecordDto record) {
+        return nullToEmpty(record.getNdogBillingA()) + "|"
+                + nullToEmpty(record.getAccountA()) + "|"
+                + nullToEmpty(record.getNdogBillingB()) + "|"
+                + FioNormalizer.normalize(record.getFioBillingA()) + "|"
+                + (record.getBillDate() == null ? "" : record.getBillDate().toString());
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value.trim();
     }
 
     public List<ValidationErrorDto> validateReport(TransferReportDto report, List<TransferRecordDto> records,

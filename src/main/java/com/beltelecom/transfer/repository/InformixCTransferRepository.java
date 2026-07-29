@@ -11,8 +11,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Date;
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Repository
 @ConditionalOnProperty(prefix = "informix.datasource", name = "enabled", havingValue = "true", matchIfMissing = true)
@@ -57,6 +61,49 @@ public class InformixCTransferRepository implements CTransferRepository {
     @Override
     public void deleteAll() {
         informixJdbcTemplate.getJdbcTemplate().update("DELETE FROM c_transfer_dev");
+    }
+
+    @Override
+    public boolean existsByFlFile(String flFile) {
+        Long count = informixJdbcTemplate.getJdbcTemplate().queryForObject(
+                "SELECT COUNT(*) FROM c_transfer_dev WHERE fl_file = ?",
+                Long.class,
+                flFile);
+        return count != null && count > 0;
+    }
+
+    @Override
+    public Set<String> findNdogBillingAWithBillDateInRange(Collection<String> ndogBillingA,
+                                                           LocalDate fromInclusive,
+                                                           LocalDate toExclusive) {
+        if (ndogBillingA == null || ndogBillingA.isEmpty()) {
+            return Set.of();
+        }
+        List<String> ndogs = ndogBillingA.stream()
+                .filter(v -> v != null && !v.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (ndogs.isEmpty()) {
+            return Set.of();
+        }
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("ndogs", ndogs)
+                .addValue("fromDate", Date.valueOf(fromInclusive))
+                .addValue("toDate", Date.valueOf(toExclusive));
+
+        List<String> found = informixJdbcTemplate.query(
+                """
+                        SELECT DISTINCT TRIM(ndog_billing_a) AS ndog_billing_a
+                          FROM c_transfer_dev
+                         WHERE TRIM(ndog_billing_a) IN (:ndogs)
+                           AND bill_date >= :fromDate
+                           AND bill_date < :toDate
+                        """,
+                params,
+                (rs, rowNum) -> rs.getString("ndog_billing_a"));
+        return new HashSet<>(found);
     }
 
     private MapSqlParameterSource toParams(TransferBalance record, LocalDateTime now) {

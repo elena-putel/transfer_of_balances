@@ -1,9 +1,13 @@
 package com.beltelecom.transfer.integration;
 
+import com.beltelecom.transfer.domain.Region;
 import com.beltelecom.transfer.entity.TransferLoadLog;
+import com.beltelecom.transfer.entity.TransferPath;
 import com.beltelecom.transfer.repository.CTransferRepository;
 import com.beltelecom.transfer.repository.TransferLoadLogRepository;
+import com.beltelecom.transfer.repository.TransferPathRepository;
 import com.beltelecom.transfer.service.TransferProcessingService;
+import com.beltelecom.transfer.service.TransferWorkspaceService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -36,22 +40,17 @@ class TransferProcessingIntegrationTest {
     static Path tempBase;
 
     static Path inputDir;
-    static Path processedDir;
-    static Path errorDir;
+    static Path outDir;
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) throws IOException {
-        inputDir = Files.createDirectory(tempBase.resolve("in"));
-        processedDir = Files.createDirectory(tempBase.resolve("processed"));
-        errorDir = Files.createDirectory(tempBase.resolve("error"));
+        inputDir = Files.createDirectories(tempBase.resolve("in"));
+        outDir = tempBase.resolve("out");
 
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("informix.datasource.enabled", () -> "false");
-        registry.add("transfer.input-directory", () -> inputDir.toString());
-        registry.add("transfer.processed-directory", () -> processedDir.toString());
-        registry.add("transfer.error-directory", () -> errorDir.toString());
         registry.add("transfer.scheduled.enabled", () -> "false");
     }
 
@@ -64,10 +63,62 @@ class TransferProcessingIntegrationTest {
     @Autowired
     private TransferLoadLogRepository loadLogRepository;
 
+    @Autowired
+    private TransferPathRepository transferPathRepository;
+
     @BeforeEach
     void cleanUp() {
         cTransferRepository.deleteAll();
         loadLogRepository.deleteAll();
+        transferPathRepository.deleteAll();
+        transferPathRepository.save(TransferPath.builder()
+                .idRegion(Region.MINSK_REGION.getId())
+                .path(tempBase.toAbsolutePath().toString())
+                .build());
+    }
+
+    @Test
+    void shouldFailWhenPathMissingInDb() {
+        transferPathRepository.deleteAll();
+
+        var response = processingService.processIncomingFiles();
+
+        assertThat(response.getMessage()).isEqualTo(TransferWorkspaceService.NO_PATH_IN_DB);
+        assertThat(response.getFilesFailed()).isEqualTo(1);
+        assertThat(loadLogRepository.findTopByOrderByStartedAtDesc())
+                .isPresent()
+                .get()
+                .satisfies(log -> {
+                    assertThat(log.getErrorMessage()).isEqualTo(TransferWorkspaceService.NO_PATH_IN_DB);
+                    assertThat(log.getFlFile()).isNull();
+                    assertThat(log.getReportFile()).isNull();
+                });
+        assertThat(Files.exists(outDir)).isFalse();
+        assertThat(Files.exists(tempBase.resolve("prt"))).isFalse();
+    }
+
+    @Test
+    void shouldFailWhenBaseDirectoryMissing() throws IOException {
+        Path missingBase = tempBase.resolve("missing-base");
+        transferPathRepository.deleteAll();
+        transferPathRepository.save(TransferPath.builder()
+                .idRegion(Region.MINSK_REGION.getId())
+                .path(missingBase.toAbsolutePath().toString())
+                .build());
+
+        var response = processingService.processIncomingFiles();
+
+        assertThat(response.getMessage()).startsWith(TransferWorkspaceService.DIRECTORY_MISSING);
+        assertThat(Files.exists(missingBase)).isFalse();
+        assertThat(Files.exists(missingBase.resolve("out"))).isFalse();
+        assertThat(Files.exists(missingBase.resolve("prt"))).isFalse();
+        assertThat(loadLogRepository.findTopByOrderByStartedAtDesc())
+                .isPresent()
+                .get()
+                .satisfies(log -> {
+                    assertThat(log.getErrorMessage()).startsWith(TransferWorkspaceService.DIRECTORY_MISSING);
+                    assertThat(log.getFlFile()).isNull();
+                });
     }
 
     @Test
@@ -85,7 +136,8 @@ class TransferProcessingIntegrationTest {
                 .get()
                 .extracting(TransferLoadLog::getStatus)
                 .isEqualTo(TransferLoadLog.LoadStatus.SUCCESS);
-        assertThat(Files.list(processedDir).count()).isEqualTo(2);
+        assertThat(Files.list(outDir).count()).isEqualTo(2);
+        assertThat(Files.isDirectory(tempBase.resolve("prt"))).isTrue();
     }
 
     @Test
@@ -102,11 +154,11 @@ class TransferProcessingIntegrationTest {
                 .get()
                 .extracting(TransferLoadLog::getStatus)
                 .isEqualTo(TransferLoadLog.LoadStatus.CHECKSUM_ERROR);
-        assertThat(Files.list(errorDir).count()).isEqualTo(2);
+        assertThat(Files.list(outDir).count()).isEqualTo(2);
     }
 
     @Test
-    void shouldPreventDuplicateRecords() throws IOException {
+    void shouldRejectAlreadyLoadedFileName() throws IOException {
         copyTestFile("epb20260701090706.045", inputDir);
         copyTestFile("epbr20260701090706.045", inputDir);
         processingService.processIncomingFiles();
@@ -117,6 +169,14 @@ class TransferProcessingIntegrationTest {
 
         assertThat(secondRun.getFilesFailed()).isEqualTo(1);
         assertThat(cTransferRepository.count()).isEqualTo(8);
+        assertThat(loadLogRepository.findTopByOrderByStartedAtDesc())
+                .isPresent()
+                .get()
+                .satisfies(log -> {
+                    assertThat(log.getStatus()).isEqualTo(TransferLoadLog.LoadStatus.VALIDATION_ERROR);
+                    assertThat(log.getErrorMessage()).isEqualTo("Файл с таким именем загружен");
+                });
+        assertThat(Files.list(outDir).count()).isEqualTo(2);
     }
 
     private void copyTestFile(String name, Path targetDir) throws IOException {

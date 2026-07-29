@@ -40,6 +40,12 @@ public class LoadProtocolData {
     BigDecimal notLoadedSum;
     List<NotLoadedRow> notLoadedRows;
 
+    /**
+     * Строки протокола {@code _error.xlsx}: отсев по статусу + предупреждения
+     * (нулевая/крупная сумма, дата не текущего месяца, повтор приложения за месяц).
+     */
+    List<NotLoadedRow> errorProtocolRows;
+
     public boolean isFailed() {
         return failureReason != null && !failureReason.isBlank();
     }
@@ -47,6 +53,7 @@ public class LoadProtocolData {
     @Value
     @Builder
     public static class StatusBreakdown {
+        int statusCode;
         String statusName;
         int count;
         BigDecimal sum;

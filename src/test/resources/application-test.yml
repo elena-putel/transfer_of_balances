@@ -14,9 +14,6 @@ informix:
     enabled: false
 
 transfer:
-  input-directory: target/test-input
-  processed-directory: target/test-processed
-  error-directory: target/test-error
   scheduled:
     enabled: false
 

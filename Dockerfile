@@ -3,17 +3,13 @@ FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
-    && mkdir -p /data/incoming /data/processed /data/error \
+    && mkdir -p /data \
     && chown -R appuser:appgroup /data /app
 
-COPY target/transfer-of-balances-*.jar app.jar
+COPY target/transfer-of-balances-*.war app.war
 
 USER appuser
 
 EXPOSE 8080
 
-ENV TRANSFER_INPUT_DIR=/data/incoming \
-    TRANSFER_PROCESSED_DIR=/data/processed \
-    TRANSFER_ERROR_DIR=/data/error
-
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-jar", "app.war"]

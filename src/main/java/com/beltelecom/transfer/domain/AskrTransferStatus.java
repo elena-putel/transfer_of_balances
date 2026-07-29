@@ -49,7 +49,22 @@ public final class AskrTransferStatus {
         return NAMES.getOrDefault(status, "статус " + status);
     }
 
+    /** Код статуса + расшифровка, например {@code 14 отказ со стороны АСКР: отсутствует сторона А}. */
+    public static String formatWithCode(int status) {
+        return status + " " + nameOf(status);
+    }
+
+    public static String formatWithCode(int status, String nameFromDb) {
+        String name = (nameFromDb == null || nameFromDb.isBlank()) ? nameOf(status) : nameFromDb.trim();
+        return status + " " + name;
+    }
+
     public static boolean isRejected(int status) {
         return status != TO_PROCESS && status != PROCESSED_IN_ASKR;
+    }
+
+    public static boolean isSideARejected(Integer status) {
+        return status != null
+                && (status == REJECT_SIDE_A_MISSING || status == REJECT_SIDE_A_MULTIPLE);
     }
 }
