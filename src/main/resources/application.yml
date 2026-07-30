@@ -26,7 +26,7 @@ spring:
 informix:
   datasource:
     enabled: ${INFORMIX_ENABLED:true}
-    url: ${INFORMIX_URL:jdbc:informix-sqli://10.247.12.130:1525/sprav:INFORMIXSERVER=i_minskcvk;DB_LOCALE=ru_RU.866;CLIENT_LOCALE=ru_RU.utf8}
+    url: ${INFORMIX_URL:jdbc:informix-sqli://10.247.12.133:1525/sprav:INFORMIXSERVER=i_zonacvk;DB_LOCALE=ru_RU.866;CLIENT_LOCALE=ru_RU.utf8}
     username: ${INFORMIX_USER:javaprog}
     password: ${INFORMIX_PASSWORD:jdk601}
     driver-class-name: com.informix.jdbc.IfxDriver

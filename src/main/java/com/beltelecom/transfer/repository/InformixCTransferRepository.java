@@ -23,7 +23,7 @@ import java.util.Set;
 public class InformixCTransferRepository implements CTransferRepository {
 
     private static final String INSERT_SQL = """
-            INSERT INTO c_transfer_dev (
+            INSERT INTO sprav:c_transfer_dev (
                 in_out, code_adm, cust_code, fio_askr, ndog_billing_a, account_a, ndog_billing_b,
                 fio_billing_a, bill_date, type_serv_a, operation, summa, status, date_input, date_mod,
                 cod_oper, comment, bill_type_a, type_enter, fl_file
@@ -54,19 +54,19 @@ public class InformixCTransferRepository implements CTransferRepository {
     @Override
     public long count() {
         Long count = informixJdbcTemplate.getJdbcTemplate()
-                .queryForObject("SELECT COUNT(*) FROM c_transfer_dev", Long.class);
+                .queryForObject("SELECT COUNT(*) FROM sprav:c_transfer_dev", Long.class);
         return count == null ? 0L : count;
     }
 
     @Override
     public void deleteAll() {
-        informixJdbcTemplate.getJdbcTemplate().update("DELETE FROM c_transfer_dev");
+        informixJdbcTemplate.getJdbcTemplate().update("DELETE FROM sprav:c_transfer_dev");
     }
 
     @Override
     public boolean existsByFlFile(String flFile) {
         Long count = informixJdbcTemplate.getJdbcTemplate().queryForObject(
-                "SELECT COUNT(*) FROM c_transfer_dev WHERE fl_file = ?",
+                "SELECT COUNT(*) FROM sprav:c_transfer_dev WHERE fl_file = ?",
                 Long.class,
                 flFile);
         return count != null && count > 0;
@@ -96,7 +96,7 @@ public class InformixCTransferRepository implements CTransferRepository {
         List<String> found = informixJdbcTemplate.query(
                 """
                         SELECT DISTINCT TRIM(ndog_billing_a) AS ndog_billing_a
-                          FROM c_transfer_dev
+                          FROM sprav:c_transfer_dev
                          WHERE TRIM(ndog_billing_a) IN (:ndogs)
                            AND bill_date >= :fromDate
                            AND bill_date < :toDate
