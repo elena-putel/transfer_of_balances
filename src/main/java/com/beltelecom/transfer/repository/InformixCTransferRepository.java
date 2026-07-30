@@ -3,21 +3,30 @@ package com.beltelecom.transfer.repository;
 import com.beltelecom.transfer.entity.TransferBalance;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.BatchPreparedStatementSetter;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Date;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
+/**
+ * Informix {@code sprav:c_transfer_dev}. Только {@code ?}-плейсхолдеры —
+ * иначе Spring NamedParameterJdbcTemplate воспринимает {@code :c_transfer_dev} как параметр.
+ */
 @Repository
 @ConditionalOnProperty(prefix = "informix.datasource", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class InformixCTransferRepository implements CTransferRepository {
@@ -28,44 +37,50 @@ public class InformixCTransferRepository implements CTransferRepository {
                 fio_billing_a, bill_date, type_serv_a, operation, summa, status, date_input, date_mod,
                 cod_oper, comment, bill_type_a, type_enter, fl_file
             ) VALUES (
-                :inOut, :codeAdm, :custCode, :fioAskr, :ndogBillingA, :accountA, :ndogBillingB,
-                :fioBillingA, :billDate, :typeServA, :operation, :summa, :status, :dateInput, :dateMod,
-                :codOper, :comment, :billTypeA, :typeEnter, :flFile
+                ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?
             )
             """;
 
-    private final NamedParameterJdbcTemplate informixJdbcTemplate;
+    private final JdbcTemplate jdbcTemplate;
 
     public InformixCTransferRepository(
             @Qualifier("informixJdbcTemplate") NamedParameterJdbcTemplate informixJdbcTemplate) {
-        this.informixJdbcTemplate = informixJdbcTemplate;
+        this.jdbcTemplate = informixJdbcTemplate.getJdbcTemplate();
     }
 
     @Override
     @Transactional(transactionManager = "informixTransactionManager")
     public void saveAll(List<TransferBalance> records) {
         LocalDateTime now = LocalDateTime.now();
-        SqlParameterSource[] batch = records.stream()
-                .map(record -> toParams(record, now))
-                .toArray(SqlParameterSource[]::new);
-        informixJdbcTemplate.batchUpdate(INSERT_SQL, batch);
+        jdbcTemplate.batchUpdate(INSERT_SQL, new BatchPreparedStatementSetter() {
+            @Override
+            public void setValues(PreparedStatement ps, int i) throws SQLException {
+                bindInsert(ps, records.get(i), now);
+            }
+
+            @Override
+            public int getBatchSize() {
+                return records.size();
+            }
+        });
     }
 
     @Override
     public long count() {
-        Long count = informixJdbcTemplate.getJdbcTemplate()
-                .queryForObject("SELECT COUNT(*) FROM sprav:c_transfer_dev", Long.class);
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sprav:c_transfer_dev", Long.class);
         return count == null ? 0L : count;
     }
 
     @Override
     public void deleteAll() {
-        informixJdbcTemplate.getJdbcTemplate().update("DELETE FROM sprav:c_transfer_dev");
+        jdbcTemplate.update("DELETE FROM sprav:c_transfer_dev");
     }
 
     @Override
     public boolean existsByFlFile(String flFile) {
-        Long count = informixJdbcTemplate.getJdbcTemplate().queryForObject(
+        Long count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM sprav:c_transfer_dev WHERE fl_file = ?",
                 Long.class,
                 flFile);
@@ -88,50 +103,66 @@ public class InformixCTransferRepository implements CTransferRepository {
             return Set.of();
         }
 
-        MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("ndogs", ndogs)
-                .addValue("fromDate", Date.valueOf(fromInclusive))
-                .addValue("toDate", Date.valueOf(toExclusive));
+        String placeholders = IntStream.range(0, ndogs.size())
+                .mapToObj(i -> "?")
+                .collect(Collectors.joining(", "));
+        String sql = """
+                SELECT DISTINCT TRIM(ndog_billing_a) AS ndog_billing_a
+                  FROM sprav:c_transfer_dev
+                 WHERE TRIM(ndog_billing_a) IN (%s)
+                   AND bill_date >= ?
+                   AND bill_date < ?
+                """.formatted(placeholders);
 
-        List<String> found = informixJdbcTemplate.query(
-                """
-                        SELECT DISTINCT TRIM(ndog_billing_a) AS ndog_billing_a
-                          FROM sprav:c_transfer_dev
-                         WHERE TRIM(ndog_billing_a) IN (:ndogs)
-                           AND bill_date >= :fromDate
-                           AND bill_date < :toDate
-                        """,
-                params,
-                (rs, rowNum) -> rs.getString("ndog_billing_a"));
+        Object[] args = new Object[ndogs.size() + 2];
+        for (int i = 0; i < ndogs.size(); i++) {
+            args[i] = ndogs.get(i);
+        }
+        args[ndogs.size()] = Date.valueOf(fromInclusive);
+        args[ndogs.size() + 1] = Date.valueOf(toExclusive);
+
+        List<String> found = jdbcTemplate.query(sql, (rs, rowNum) -> rs.getString("ndog_billing_a"), args);
         return new HashSet<>(found);
     }
 
-    private MapSqlParameterSource toParams(TransferBalance record, LocalDateTime now) {
+    private static void bindInsert(PreparedStatement ps, TransferBalance record, LocalDateTime now)
+            throws SQLException {
         LocalDateTime dateInput = record.getDateInput() != null ? record.getDateInput() : now;
         LocalDateTime dateMod = record.getDateMod() != null ? record.getDateMod() : now;
         Integer status = record.getStatus() != null ? record.getStatus() : 1;
         Short typeEnter = record.getTypeEnter() != null ? record.getTypeEnter() : 0;
 
-        return new MapSqlParameterSource()
-                .addValue("inOut", record.getInOut())
-                .addValue("codeAdm", record.getCodeAdm())
-                .addValue("custCode", record.getCustCode())
-                .addValue("fioAskr", record.getFioAskr())
-                .addValue("ndogBillingA", record.getNdogBillingA())
-                .addValue("accountA", record.getAccountA())
-                .addValue("ndogBillingB", record.getNdogBillingB())
-                .addValue("fioBillingA", record.getFioBillingA())
-                .addValue("billDate", record.getBillDate() != null ? Date.valueOf(record.getBillDate()) : null)
-                .addValue("typeServA", record.getTypeServA())
-                .addValue("operation", record.getOperation())
-                .addValue("summa", record.getSumma())
-                .addValue("status", status)
-                .addValue("dateInput", Timestamp.valueOf(dateInput))
-                .addValue("dateMod", Timestamp.valueOf(dateMod))
-                .addValue("codOper", record.getCodOper())
-                .addValue("comment", record.getComment())
-                .addValue("billTypeA", record.getBillTypeA())
-                .addValue("typeEnter", typeEnter)
-                .addValue("flFile", record.getFlFile());
+        ps.setObject(1, record.getInOut());
+        ps.setObject(2, record.getCodeAdm());
+        ps.setObject(3, record.getCustCode());
+        setNullableString(ps, 4, record.getFioAskr());
+        ps.setString(5, record.getNdogBillingA());
+        ps.setString(6, record.getAccountA());
+        ps.setString(7, record.getNdogBillingB());
+        ps.setString(8, record.getFioBillingA());
+        if (record.getBillDate() != null) {
+            ps.setDate(9, Date.valueOf(record.getBillDate()));
+        } else {
+            ps.setNull(9, Types.DATE);
+        }
+        ps.setObject(10, record.getTypeServA());
+        ps.setObject(11, record.getOperation());
+        ps.setBigDecimal(12, record.getSumma());
+        ps.setInt(13, status);
+        ps.setTimestamp(14, Timestamp.valueOf(dateInput));
+        ps.setTimestamp(15, Timestamp.valueOf(dateMod));
+        ps.setObject(16, record.getCodOper());
+        setNullableString(ps, 17, record.getComment());
+        ps.setObject(18, record.getBillTypeA());
+        ps.setObject(19, typeEnter);
+        ps.setString(20, record.getFlFile());
+    }
+
+    private static void setNullableString(PreparedStatement ps, int index, String value) throws SQLException {
+        if (value == null) {
+            ps.setNull(index, Types.VARCHAR);
+        } else {
+            ps.setString(index, value);
+        }
     }
 }

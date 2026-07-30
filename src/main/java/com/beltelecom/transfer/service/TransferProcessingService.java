@@ -48,6 +48,9 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class TransferProcessingService {
 
+    /** Лимит Informix {@code c_transfer_dev.fl_file}. */
+    private static final int MAX_FL_FILE_LENGTH = 22;
+
     private final TransferProperties properties;
     private final TransferFileParser fileParser;
     private final TransferRecordValidator validator;
@@ -209,6 +212,15 @@ public class TransferProcessingService {
         String outPath = workspace.out().toString();
 
         try {
+            if (fileName.length() > MAX_FL_FILE_LENGTH) {
+                String error = "Имя файла длиннее " + MAX_FL_FILE_LENGTH + " символов: " + fileName;
+                failLoad(loadLog, TransferLoadLog.LoadStatus.VALIDATION_ERROR, error);
+                writeFailureReports(fileName, records, startedAt, loadLog.getFinishedAt(), error, outPath);
+                moveToOut(dataFile, reportFile, workspace);
+                metrics.incrementErrors(1);
+                return new FileProcessResult(false, 0);
+            }
+
             if (!Files.exists(reportFile)) {
                 String error = "Не найден файл отчёта: " + reportFile.getFileName();
                 failLoad(loadLog, TransferLoadLog.LoadStatus.FAILED, error);
