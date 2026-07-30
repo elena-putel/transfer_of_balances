@@ -24,15 +24,15 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
- * Informix {@code sprav:c_transfer_dev}. Только {@code ?}-плейсхолдеры —
- * иначе Spring NamedParameterJdbcTemplate воспринимает {@code :c_transfer_dev} как параметр.
+ * Informix {@code sprav:c_transfer}. Только {@code ?}-плейсхолдеры —
+ * иначе Spring NamedParameterJdbcTemplate воспринимает {@code :c_transfer} как параметр.
  */
 @Repository
 @ConditionalOnProperty(prefix = "informix.datasource", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class InformixCTransferRepository implements CTransferRepository {
 
     private static final String INSERT_SQL = """
-            INSERT INTO sprav:c_transfer_dev (
+            INSERT INTO sprav:c_transfer (
                 in_out, code_adm, cust_code, fio_askr, ndog_billing_a, account_a, ndog_billing_b,
                 fio_billing_a, bill_date, type_serv_a, operation, summa, status, date_input, date_mod,
                 cod_oper, comment, bill_type_a, type_enter, fl_file
@@ -69,19 +69,19 @@ public class InformixCTransferRepository implements CTransferRepository {
 
     @Override
     public long count() {
-        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sprav:c_transfer_dev", Long.class);
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sprav:c_transfer", Long.class);
         return count == null ? 0L : count;
     }
 
     @Override
     public void deleteAll() {
-        jdbcTemplate.update("DELETE FROM sprav:c_transfer_dev");
+        jdbcTemplate.update("DELETE FROM sprav:c_transfer");
     }
 
     @Override
     public boolean existsByFlFile(String flFile) {
         Long count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM sprav:c_transfer_dev WHERE fl_file = ?",
+                "SELECT COUNT(*) FROM sprav:c_transfer WHERE fl_file = ?",
                 Long.class,
                 flFile);
         return count != null && count > 0;
@@ -108,7 +108,7 @@ public class InformixCTransferRepository implements CTransferRepository {
                 .collect(Collectors.joining(", "));
         String sql = """
                 SELECT DISTINCT TRIM(ndog_billing_a) AS ndog_billing_a
-                  FROM sprav:c_transfer_dev
+                  FROM sprav:c_transfer
                  WHERE TRIM(ndog_billing_a) IN (%s)
                    AND bill_date >= ?
                    AND bill_date < ?

@@ -11,7 +11,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * Строка таблицы Informix {@code c_transfer_dev}. Таблица уже существует — DDL не выполняется.
+ * Строка таблицы Informix {@code c_transfer}. Таблица уже существует — DDL не выполняется.
  */
 @Getter
 @Setter

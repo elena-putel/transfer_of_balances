@@ -19,7 +19,7 @@ import java.util.List;
 public class InformixJdbcTableExistenceChecker implements InformixTableExistenceChecker {
 
     private static final List<RequiredTable> REQUIRED = List.of(
-            new RequiredTable("sprav", "c_transfer_dev"),
+            new RequiredTable("sprav", "c_transfer"),
             new RequiredTable("exterior", "e_adsl_nsi"),
             new RequiredTable("ratsg", "a2")
     );

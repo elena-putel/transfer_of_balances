@@ -11,7 +11,7 @@ import java.util.Set;
 
 /**
  * Причины внесения загруженной записи в протокол {@code _error}
- * (запись при этом всё равно сохраняется в {@code c_transfer_dev}).
+ * (запись при этом всё равно сохраняется в {@code c_transfer}).
  */
 final class ErrorProtocolAttentionCollector {
 

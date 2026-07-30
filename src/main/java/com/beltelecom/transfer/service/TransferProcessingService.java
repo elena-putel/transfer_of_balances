@@ -48,7 +48,7 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class TransferProcessingService {
 
-    /** Лимит Informix {@code c_transfer_dev.fl_file}. */
+    /** Лимит Informix {@code c_transfer.fl_file}. */
     private static final int MAX_FL_FILE_LENGTH = 22;
 
     private final TransferProperties properties;

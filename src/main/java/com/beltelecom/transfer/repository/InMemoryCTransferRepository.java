@@ -31,7 +31,7 @@ public class InMemoryCTransferRepository implements CTransferRepository {
         for (TransferBalance record : records) {
             if (isDuplicate(record)) {
                 throw new DataIntegrityViolationException(
-                        "Дубликат записи c_transfer_dev: fl_file=" + record.getFlFile()
+                        "Дубликат записи c_transfer: fl_file=" + record.getFlFile()
                                 + ", ndog_billing_a=" + record.getNdogBillingA());
             }
             if (record.getDateInput() == null) {
