@@ -10,9 +10,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.Reader;
 import java.math.BigDecimal;
 import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CodingErrorAction;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -32,7 +35,7 @@ public class TransferFileParser {
 
     public List<TransferRecordDto> parseDataFile(Path filePath) {
         List<TransferRecordDto> records = new ArrayList<>();
-        try (Reader reader = Files.newBufferedReader(filePath, Charset.forName("Windows-1251"));
+        try (Reader reader = openCp1251Reader(filePath);
              var csvReader = new CSVReaderBuilder(reader)
                      .withCSVParser(new CSVParserBuilder().withSeparator(SEPARATOR).build())
                      .build()) {
@@ -57,7 +60,7 @@ public class TransferFileParser {
     }
 
     public TransferReportDto parseReportFile(Path filePath) {
-        try (Reader reader = Files.newBufferedReader(filePath, Charset.forName("Windows-1251"));
+        try (Reader reader = openCp1251Reader(filePath);
              var csvReader = new CSVReaderBuilder(reader)
                      .withCSVParser(new CSVParserBuilder().withSeparator(SEPARATOR).build())
                      .build()) {
@@ -79,6 +82,13 @@ public class TransferFileParser {
         } catch (IOException | CsvValidationException e) {
             throw new TransferProcessingException("IO_ERROR", "Ошибка чтения отчёта: " + filePath.getFileName(), e);
         }
+    }
+
+    private static Reader openCp1251Reader(Path filePath) throws IOException {
+        CharsetDecoder decoder = Charset.forName("Windows-1251").newDecoder()
+                .onMalformedInput(CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(CodingErrorAction.REPLACE);
+        return new InputStreamReader(Files.newInputStream(filePath), decoder);
     }
 
     private TransferRecordDto parseRecord(String[] line, int lineNumber) {
