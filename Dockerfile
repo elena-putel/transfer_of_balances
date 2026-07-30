@@ -6,7 +6,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
     && mkdir -p /data \
     && chown -R appuser:appgroup /data /app
 
-COPY target/transfer-of-balances-*.war app.war
+COPY target/transfer.war app.war
 
 USER appuser
 

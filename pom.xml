@@ -129,6 +129,7 @@
     </dependencies>
 
     <build>
+        <finalName>transfer</finalName>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
