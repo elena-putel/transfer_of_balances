@@ -41,11 +41,14 @@ public class LoadProtocolExcelService {
     private final ProtocolDirectoryResolver protocolDirectoryResolver;
 
     public Path write(LoadProtocolData data) {
+        return writeNamed(data.getFileName() + "_prt.xlsx", data);
+    }
+
+    public Path writeNamed(String outputFileName, LoadProtocolData data) {
         Path dir = protocolDirectoryResolver.resolve();
         ensureDirectory(dir);
 
-        String protocolFileName = data.getFileName() + "_prt.xlsx";
-        Path target = dir.resolve(protocolFileName);
+        Path target = dir.resolve(outputFileName);
 
         try (Workbook workbook = new XSSFWorkbook();
              OutputStream out = Files.newOutputStream(target)) {

@@ -15,6 +15,7 @@ import com.beltelecom.transfer.mapper.TransferMapper;
 import com.beltelecom.transfer.metrics.TransferMetrics;
 import com.beltelecom.transfer.parser.TransferFileParser;
 import com.beltelecom.transfer.repository.CTransferRepository;
+import com.beltelecom.transfer.repository.InformixTableExistenceChecker;
 import com.beltelecom.transfer.repository.TransferLoadLogRepository;
 import com.beltelecom.transfer.service.TransferWorkspaceService.Workspace;
 import com.beltelecom.transfer.validation.TransferRecordValidator;
@@ -30,6 +31,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -59,6 +61,7 @@ public class TransferProcessingService {
     private final MonthlyAllProtocolService monthlyAllProtocolService;
     private final CTransferRepository cTransferRepository;
     private final TransferWorkspaceService workspaceService;
+    private final InformixTableExistenceChecker tableExistenceChecker;
 
     public ProcessResponse processIncomingFiles() {
         long startTime = System.currentTimeMillis();
@@ -79,6 +82,18 @@ public class TransferProcessingService {
         }
 
         workspace.ensureOutAndPrt();
+
+        List<String> missingTables = tableExistenceChecker.findMissingRequiredTables();
+        if (!missingTables.isEmpty()) {
+            String message = missingTables.size() == 1
+                    ? "Отсутствует таблица " + missingTables.getFirst()
+                    : "Отсутствуют таблицы: " + String.join(", ", missingTables);
+            log.error(message);
+            LocalDateTime now = LocalDateTime.now();
+            saveConfigFailureLog(message);
+            writeMissingTablesProtocol(workspace, message, now);
+            return failureResponse(message);
+        }
 
         Path inputDir = workspace.in();
         if (!Files.isDirectory(inputDir)) {
@@ -150,6 +165,22 @@ public class TransferProcessingService {
                 .durationMs(0L)
                 .build();
         loadLogRepository.save(logEntry);
+    }
+
+    private void writeMissingTablesProtocol(Workspace workspace, String message, LocalDateTime now) {
+        try {
+            String fileName = "table_prt_" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+            LoadProtocolData protocolData = protocolAssembler.assembleFailed(
+                    fileName,
+                    List.of(),
+                    now,
+                    now,
+                    message,
+                    workspace.out().toString());
+            protocolExcelService.writeNamed(fileName + ".xlsx", protocolData);
+        } catch (Exception ex) {
+            log.warn("Не удалось сформировать протокол отсутствующих таблиц: {}", ex.getMessage());
+        }
     }
 
     private void writeMonthlyAllProtocol() {
