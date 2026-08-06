@@ -4,8 +4,8 @@
 
 ## Технологии
 
-- Java 21 (Virtual Threads)
-- Spring Boot 3.3
+- Java 25 (Virtual Threads)
+- Spring Boot 4.1
 - PostgreSQL + Flyway
 - MapStruct, OpenCSV, Resilience4j, AspectJ (AOP)
 - TestContainers, Micrometer/Prometheus
@@ -63,7 +63,7 @@ export TRANSFER_INPUT_DIR=/data/incoming
 export TRANSFER_PROCESSED_DIR=/data/processed
 export TRANSFER_ERROR_DIR=/data/error
 
-java -jar target/transfer-of-balances-1.0.0-SNAPSHOT.jar
+java -jar target/transfer.war
 ```
 
 ### Docker
