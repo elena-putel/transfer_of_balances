@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -50,7 +51,7 @@ public class PayerResolutionService {
         }
 
         if (matches.size() > 1) {
-            applyMultiple(entity);
+            applyMultiple(entity,matches);
             log.debug("Строка {}: найдено {} абонентов — status={}",
                     dto.getLineNumber(), matches.size(),
                     AskrTransferStatus.REJECT_MULTIPLE_SUBSCRIBERS);
@@ -70,8 +71,12 @@ public class PayerResolutionService {
         entity.setStatus(AskrTransferStatus.REJECT_SUBSCRIBER_NOT_FOUND);
     }
 
-    private void applyMultiple(TransferBalance entity) {
-        entity.setCustCode(properties.getDefaultCustCode());
+    private void applyMultiple(TransferBalance entity,List<A2SubscriberMatch> matches) {
+        A2SubscriberMatch a2=matches.stream()
+                .max(Comparator.comparing(A2SubscriberMatch::dateMod))
+                .orElse(null);
+        entity.setCustCode(a2.abCode());
+        entity.setFioAskr(a2.fullName());
         entity.setStatus(AskrTransferStatus.REJECT_MULTIPLE_SUBSCRIBERS);
     }
 

@@ -66,7 +66,7 @@ public class LoadProtocolExcelService {
             rowIdx++;
             rowIdx = writeOutputSection(sheet, rowIdx, data, styles);
             rowIdx++;
-            writeNotLoadedSection(sheet, rowIdx, data, styles);
+           // writeNotLoadedSection(sheet, rowIdx, data, styles); убрано по просьбе Шаминко nextcloud 15.09.2026
 
             sheet.setColumnWidth(0, 42 * 256);
             sheet.setColumnWidth(1, 28 * 256);
@@ -139,7 +139,7 @@ public class LoadProtocolExcelService {
     }
 
     private int writeOutputSection(Sheet sheet, int rowIdx, LoadProtocolData data, Styles styles) {
-        rowIdx = sectionTitle(sheet, rowIdx, "2. ВЫХОД (Загружено в базу данных):", styles);
+        rowIdx = sectionTitle(sheet, rowIdx, "2. ВЫХОД (Загружено в c_transfer):", styles);
         rowIdx = labelValue(sheet, rowIdx, "Количество записей:", data.getLoadedCount(), styles);
         rowIdx = labelValue(sheet, rowIdx, "На сумму:", formatSum(data.getLoadedSum()), styles);
         rowIdx = sectionTitle(sheet, rowIdx, "В разрезе статусов:", styles);

@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.sql.Date;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -31,7 +32,7 @@ class PayerResolutionServiceTest {
     @Test
     void shouldSetStatus4CustCodeAndFioAskrWhenUniqueMatch() {
         a2Repository.put(new BigDecimal("17070104879"), "Куренкова Светлана Ивановна",
-                List.of(new A2SubscriberMatch(100500, "Куренкова Светлана Ивановна")));
+                List.of(new A2SubscriberMatch(100500, "Куренкова Светлана Ивановна", LocalDate.of(2026,9,16))));
 
         TransferBalance entity = new TransferBalance();
         service.resolve(entity, sampleDto("17070104879", "Куренкова Светлана Ивановна"));
@@ -55,8 +56,8 @@ class PayerResolutionServiceTest {
     void shouldSetStatus17WhenMultipleFound() {
         a2Repository.put(new BigDecimal("17070104879"), "Куренкова Светлана Ивановна",
                 List.of(
-                        new A2SubscriberMatch(1, "Куренкова Светлана Ивановна"),
-                        new A2SubscriberMatch(2, "Куренкова Светлана Ивановна")));
+                        new A2SubscriberMatch(1, "Куренкова Светлана Ивановна", LocalDate.of(2026,9,16)),
+                        new A2SubscriberMatch(2, "Куренкова Светлана Ивановна", LocalDate.of(2026,9,16))));
 
         TransferBalance entity = new TransferBalance();
         service.resolve(entity, sampleDto("17070104879", "Куренкова Светлана Ивановна"));
@@ -68,7 +69,7 @@ class PayerResolutionServiceTest {
     @Test
     void shouldMatchWhenYoAndYeDiffer() {
         a2Repository.put(new BigDecimal("17070104879"), "Королёва Алёна",
-                List.of(new A2SubscriberMatch(77, "Королёва Алёна")));
+                List.of(new A2SubscriberMatch(77, "Королёва Алёна", LocalDate.of(2026,9,16))));
 
         TransferBalance entity = new TransferBalance();
         service.resolve(entity, sampleDto("17070104879", "Королева Алена"));

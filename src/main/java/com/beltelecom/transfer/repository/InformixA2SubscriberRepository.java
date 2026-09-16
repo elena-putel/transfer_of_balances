@@ -7,6 +7,10 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.sql.Date;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,7 +30,8 @@ public class InformixA2SubscriberRepository implements A2SubscriberRepository {
                            CONCAT(NVL(TRIM(a5i.name), ''), ' '),
                            NVL(TRIM(a5o.name), '')
                        )
-                   ) AS full_name
+                   ) AS full_name,
+                a2.date_mod
               FROM ratsg:a2 a2
               LEFT JOIN ratsg:a5 a5 ON a2.name_code = a5.sirname_code
               LEFT JOIN ratsg:a5i a5i ON a2.full_name = a5i.name_code
@@ -47,13 +52,13 @@ public class InformixA2SubscriberRepository implements A2SubscriberRepository {
         String expectedFio = FioNormalizer.normalize(fioFromFile);
         List<Candidate> candidates = informixJdbcTemplate.getJdbcTemplate().query(
                 FIND_CANDIDATES_SQL,
-                (rs, rowNum) -> new Candidate(rs.getInt("ab_code"), rs.getString("full_name")),
+                (rs, rowNum) -> new Candidate(rs.getInt("ab_code"), rs.getString("full_name"),rs.getDate("date_mod")),
                 nomDogOb);
 
         List<A2SubscriberMatch> matched = new ArrayList<>();
         for (Candidate candidate : candidates) {
             if (expectedFio.equals(FioNormalizer.normalize(candidate.fullName()))) {
-                matched.add(new A2SubscriberMatch(candidate.abCode(), trimFullName(candidate.fullName())));
+                matched.add(new A2SubscriberMatch(candidate.abCode(), trimFullName(candidate.fullName()),dateModToLocalDate(candidate.dateMod())));
             }
         }
         return matched;
@@ -63,6 +68,11 @@ public class InformixA2SubscriberRepository implements A2SubscriberRepository {
         return fullName == null ? "" : fullName.trim().replaceAll("\\s+", " ");
     }
 
-    private record Candidate(int abCode, String fullName) {
+    private static LocalDate dateModToLocalDate(Date dateMod) {
+        return dateMod == null ? LocalDate.now()
+                : Instant.ofEpochMilli(dateMod.getTime()).atZone(ZoneId.systemDefault()).toLocalDate();
+    }
+
+    private record Candidate(int abCode, String fullName, Date dateMod) {
     }
 }

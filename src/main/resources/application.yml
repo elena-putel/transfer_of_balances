@@ -36,7 +36,7 @@ informix:
       pool-name: informix-pool
 
 transfer:
-  software-version: ${TRANSFER_SOFTWARE_VERSION:1.0.0}
+  software-version: ${TRANSFER_SOFTWARE_VERSION:1.0.1}
   report-suffix: r
   file-extension: ".045"
   data-file-prefix: epb

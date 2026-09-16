@@ -72,4 +72,8 @@ public class LoadProtocolData {
             return error;
         }
     }
+
+    public String getSoftwareVersion() {
+        return "transfer "+softwareVersion;
+    }
 }

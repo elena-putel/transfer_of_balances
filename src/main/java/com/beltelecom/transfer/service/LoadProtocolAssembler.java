@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -62,6 +63,7 @@ public class LoadProtocolAssembler {
                                            LocalDateTime finishedAt,
                                            String failureReason,
                                            String filesMovedToPath) {
+        String fileNameError=fileName+"_"+LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyMMdd_HHmmss"));
         List<TransferRecordDto> records = sourceRecords == null ? List.of() : sourceRecords;
         List<LoadProtocolData.NotLoadedRow> notLoadedRows = new ArrayList<>(records.size());
         BigDecimal notLoadedSum = BigDecimal.ZERO;
@@ -83,7 +85,7 @@ public class LoadProtocolAssembler {
 
         InputStats input = calcInputStats(records);
 
-        return baseBuilder(fileName, startedAt, finishedAt, filesMovedToPath)
+        return baseBuilder(fileNameError, startedAt, finishedAt, filesMovedToPath)
                 .failureReason(failureReason)
                 .inputTotalCount(input.totalCount)
                 .inputTotalSum(input.totalSum)
