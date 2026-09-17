@@ -23,7 +23,7 @@ public class AppConfig {
                                 1. Откройте метод POST /api/v1/transfer/process
                                 2. Нажмите Try it out → Execute
                                 """)
-                        .version("1.0.0")
+                        .version("1.0.1")
                         .contact(new Contact().name("Billing Team")));
     }
 }

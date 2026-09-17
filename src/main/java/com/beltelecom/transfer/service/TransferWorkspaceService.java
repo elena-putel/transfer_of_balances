@@ -20,8 +20,8 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class TransferWorkspaceService {
 
-    /** Пока обрабатываем только Минскую область; далее регион будет параметром. */
-    public static final Region CURRENT_REGION = Region.MINSK_REGION;
+    /** Пока обрабатываем только Минскую область; далее регион будет параметром. Region.MINSK_REGION*/
+    public static final Region CURRENT_REGION = Region.MINSK;
 
     public static final String NO_PATH_IN_DB = "Нет пути в БД";
     public static final String DIRECTORY_MISSING = "Каталог отсутствует";

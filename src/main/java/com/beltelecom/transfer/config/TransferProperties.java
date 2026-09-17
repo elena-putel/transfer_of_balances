@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "transfer")
 public class TransferProperties {
 
-    private String softwareVersion = "1.0.0";
+    private String softwareVersion = "1.0.1";
     private String reportSuffix = "r";
     private String fileExtension = ".045";
     private String dataFilePrefix = "epb";
